@@ -15,6 +15,8 @@ import { useCallback, useState } from "react"
 import Toolbar from "./Toolbar"
 import DeployButton from "./DeployButton"
 import BlockNode from "./BlockNode"
+import TemplatesModal from "./TemplatesModal"
+import type { ContractGraph } from "@/lib/stellar/deploy"
 
 const nodeTypes = {
   Condition: BlockNode,
@@ -38,6 +40,7 @@ export default function BlockEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -86,6 +89,34 @@ export default function BlockEditor() {
         className="w-full h-full"
         onDragOver={onDragOver}
         onDrop={onDrop}
+  const handleLoadTemplate = (graph: ContractGraph) => {
+    const isNonEmpty =
+      nodes.length > 1 ||
+      edges.length > 0 ||
+      (nodes.length === 1 && nodes[0].data?.label !== "Start")
+
+    if (isNonEmpty) {
+      const confirmLoad = window.confirm(
+        "Loading a template will overwrite your current canvas. Are you sure you want to proceed?"
+      )
+      if (!confirmLoad) return
+    }
+
+    setNodes(graph.nodes)
+    setEdges(graph.edges)
+    setIsTemplatesOpen(false)
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      <Toolbar onOpenTemplates={() => setIsTemplatesOpen(true)} />
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        fitView
       >
         <ReactFlow
           nodes={nodes}
@@ -103,6 +134,12 @@ export default function BlockEditor() {
         </ReactFlow>
       </div>
       <DeployButton nodes={nodes} edges={edges} />
+
+      <TemplatesModal
+        isOpen={isTemplatesOpen}
+        onClose={() => setIsTemplatesOpen(false)}
+        onSelectTemplate={handleLoadTemplate}
+      />
     </div>
   )
 }
