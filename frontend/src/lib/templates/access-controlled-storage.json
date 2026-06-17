@@ -1,0 +1,60 @@
+{
+  "nodes": [
+    {
+      "id": "1",
+      "type": "default",
+      "position": { "x": 250, "y": 50 },
+      "data": { "label": "Start" }
+    },
+    {
+      "id": "2",
+      "type": "Auth",
+      "position": { "x": 250, "y": 150 },
+      "data": { "label": "Require Owner" }
+    },
+    {
+      "id": "3",
+      "type": "Condition",
+      "position": { "x": 250, "y": 250 },
+      "data": { "label": "Is Valid Input?" }
+    },
+    {
+      "id": "4",
+      "type": "Storage",
+      "position": { "x": 250, "y": 350 },
+      "data": { "label": "Update Storage" }
+    },
+    {
+      "id": "5",
+      "type": "Event",
+      "position": { "x": 250, "y": 450 },
+      "data": { "label": "Emit StorageUpdate" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1-2",
+      "source": "1",
+      "target": "2",
+      "animated": true
+    },
+    {
+      "id": "e2-3",
+      "source": "2",
+      "target": "3",
+      "animated": true
+    },
+    {
+      "id": "e3-4",
+      "source": "3",
+      "target": "4",
+      "animated": true
+    },
+    {
+      "id": "e4-5",
+      "source": "4",
+      "target": "5",
+      "animated": true
+    }
+  ]
+}
