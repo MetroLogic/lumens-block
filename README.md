@@ -39,6 +39,18 @@ It's designed for:
 
 ---
 
+## Repository Structure
+
+```
+lumens-block/
+├── frontend/          # Next.js web application (landing page + visual editor)
+├── backend/           # Rust backend service (contract compilation & deployment API)
+├── contracts/         # Soroban smart contract workspace (Rust)
+└── README.md
+```
+
+---
+
 ## Getting Started
 
 **Prerequisites:** Node.js 18+, Rust + `wasm32-unknown-unknown` target, [Freighter wallet](https://freighter.app)
@@ -47,8 +59,14 @@ It's designed for:
 # Clone
 git clone https://github.com/metro-logic/lumens-block.git
 cd lumens-block
+```
 
-# Install frontend dependencies
+### Frontend
+
+```bash
+cd frontend
+
+# Install dependencies
 npm install
 
 # Run the development server
@@ -57,7 +75,19 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and click **Open Editor** to start building.
 
-**To build the Soroban contract:**
+### Backend (Rust API)
+
+```bash
+cd backend
+
+# Check the project compiles
+cargo check
+
+# Run the backend
+cargo run
+```
+
+### Soroban Smart Contracts
 
 ```bash
 cd contracts

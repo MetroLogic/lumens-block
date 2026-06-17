@@ -10,8 +10,8 @@ export interface ContractGraph {
  */
 export async function connectWallet(): Promise<string> {
   const freighter = await import("@stellar/freighter-api")
-  const { address } = await freighter.getAddress()
-  return address
+  const publicKey = await freighter.getPublicKey()
+  return publicKey
 }
 
 /**
