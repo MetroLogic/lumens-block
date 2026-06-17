@@ -1,8 +1,12 @@
 "use client"
 
+interface ToolbarProps {
+  onAutoLayout?: () => void
+}
+
 const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
 
-export default function Toolbar() {
+export default function Toolbar({ onAutoLayout }: ToolbarProps) {
   const onDragStart = (event: React.DragEvent, blockType: string) => {
     event.dataTransfer.setData("application/blocktype", blockType)
   }
@@ -20,6 +24,13 @@ export default function Toolbar() {
           {type}
         </div>
       ))}
+      <hr className="my-1 border-gray-200" />
+      <button
+        onClick={onAutoLayout}
+        className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+      >
+        Auto Layout
+      </button>
     </div>
   )
 }

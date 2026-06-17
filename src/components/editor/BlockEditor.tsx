@@ -11,6 +11,7 @@ import ReactFlow, {
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { useCallback } from "react"
+import { applyAutoLayout } from "@/lib/layout"
 import Toolbar from "./Toolbar"
 import DeployButton from "./DeployButton"
 
@@ -32,9 +33,29 @@ export default function BlockEditor() {
     [setEdges]
   )
 
+  const handleAutoLayout = useCallback(() => {
+    setNodes((nds) =>
+      applyAutoLayout(nds, edges).map((node) => ({
+        ...node,
+        style: { ...node.style, transition: "all 0.3s ease" },
+      }))
+    )
+    setTimeout(() => {
+      setNodes((nds) =>
+        nds.map((node) => {
+          const { transition, ...restStyle } = node.style || {}
+          return {
+            ...node,
+            style: Object.keys(restStyle).length ? restStyle : undefined,
+          }
+        })
+      )
+    }, 300)
+  }, [edges, setNodes])
+
   return (
     <div className="relative h-full w-full">
-      <Toolbar />
+      <Toolbar onAutoLayout={handleAutoLayout} />
       <ReactFlow
         nodes={nodes}
         edges={edges}
