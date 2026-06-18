@@ -14,7 +14,6 @@ import "reactflow/dist/style.css"
 import { useCallback, useEffect, useState } from "react"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
-import { useCallback, useState } from "react"
 import DeployButton from "./DeployButton"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
@@ -59,9 +58,6 @@ export default function BlockEditor() {
     return () => window.removeEventListener("keydown", onKey)
   }, [shortcutsOpen])
 
-  return (
-    <div className="relative h-full w-full">
-      <Toolbar onOpenShortcuts={() => setShortcutsOpen(true)} />
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
@@ -97,13 +93,6 @@ export default function BlockEditor() {
     [reactFlowInstance, setNodes]
   )
 
-  return (
-    <div className="relative h-full w-full">
-      <Toolbar />
-      <div 
-        className="w-full h-full"
-        onDragOver={onDragOver}
-        onDrop={onDrop}
   const handleLoadTemplate = (graph: ContractGraph) => {
     const isNonEmpty =
       nodes.length > 1 ||
@@ -122,16 +111,36 @@ export default function BlockEditor() {
     setIsTemplatesOpen(false)
   }
 
+  const onAddBlock = useCallback((type: string) => {
+    if (!reactFlowInstance) return;
+    
+    // Add block at the center of the viewport
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+
+    const newNode = {
+      id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type,
+      position,
+      data: { label: type },
+    };
+
+    setNodes((nds) => nds.concat(newNode));
+  }, [reactFlowInstance, setNodes]);
+
   return (
     <div className="relative h-full w-full">
-      <Toolbar onOpenTemplates={() => setIsTemplatesOpen(true)} />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        fitView
+      <Toolbar 
+        onOpenShortcuts={() => setShortcutsOpen(true)} 
+        onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onAddBlock={onAddBlock}
+      />
+      <div 
+        className="w-full h-full"
+        onDragOver={onDragOver}
+        onDrop={onDrop}
       >
         <ReactFlow
           nodes={nodes}
