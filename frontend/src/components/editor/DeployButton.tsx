@@ -41,6 +41,13 @@ export default function DeployButton({ nodes, edges }: Props) {
   }
 
   return (
+    <button
+      onClick={handleDeploy}
+      disabled={status === "deploying"}
+      className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
+    >
+      {labels[status]}
+    </button>
     <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
       {message && (
         <p

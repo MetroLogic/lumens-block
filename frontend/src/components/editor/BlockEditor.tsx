@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
+import SimulateButton from "./SimulateButton"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -58,10 +59,10 @@ export default function BlockEditor() {
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault()
-
       if (!reactFlowInstance) return
 
       const type = event.dataTransfer.getData("application/blocktype")
+      if (typeof type === "undefined" || !type) return
 
       if (typeof type === "undefined" || !type) {
         return
@@ -83,6 +84,15 @@ export default function BlockEditor() {
     },
     [reactFlowInstance, setNodes]
   )
+
+  // Open shortcuts overlay on `?` key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [shortcutsOpen])
 
   const handleLoadTemplate = (graph: ContractGraph) => {
     const isNonEmpty =
@@ -113,10 +123,15 @@ export default function BlockEditor() {
   return (
     <div className="relative h-full w-full">
       <Toolbar
-        onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
       />
-      <div className="h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
+
+      <div
+        className="w-full h-full"
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -132,7 +147,13 @@ export default function BlockEditor() {
           <MiniMap />
         </ReactFlow>
       </div>
-      <DeployButton nodes={nodes} edges={edges} />
+
+      {/* Action buttons — bottom right */}
+      <div className="absolute bottom-6 right-6 z-10 flex items-center gap-3">
+        <SimulateButton nodes={nodes} edges={edges} />
+        <DeployButton nodes={nodes} edges={edges} />
+      </div>
+
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
       <TemplatesModal
         isOpen={isTemplatesOpen}
