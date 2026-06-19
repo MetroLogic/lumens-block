@@ -51,6 +51,15 @@ export default function BlockEditor() {
     [setEdges]
   )
 
+  // Open overlay on `?` key press
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [shortcutsOpen])
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
@@ -112,6 +121,33 @@ export default function BlockEditor() {
     setIsTemplatesOpen(false)
   }
 
+  const onAddBlock = useCallback((type: string) => {
+    if (!reactFlowInstance) return;
+    
+    // Add block at the center of the viewport
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+
+    const newNode = {
+      id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type,
+      position,
+      data: { label: type },
+    };
+
+    setNodes((nds) => nds.concat(newNode));
+  }, [reactFlowInstance, setNodes]);
+
+  return (
+    <div className="relative h-full w-full">
+      <Toolbar 
+        onOpenShortcuts={() => setShortcutsOpen(true)} 
+        onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onAddBlock={onAddBlock}
+      />
+      <div 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
