@@ -7,7 +7,6 @@ import {
   BASE_FEE,
   nativeToScVal,
   xdr,
-  Keypair,
 } from "@stellar/stellar-sdk"
 import type { SimulateArg, SimulateEvent, SimulateResult, ResourceUsage } from "@/lib/stellar/simulate"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -73,7 +72,7 @@ function argToScVal(arg: SimulateArg): xdr.ScVal {
 
 // ─── Event parsing ────────────────────────────────────────────────────────────
 
-function parseEvents(rawEvents: SorobanRpc.Api.SimulateTransactionResponse["events"]): SimulateEvent[] {
+function parseEvents(rawEvents: xdr.DiagnosticEvent[]): SimulateEvent[] {
   if (!rawEvents || rawEvents.length === 0) return []
 
   return rawEvents.map((ev) => {
@@ -82,28 +81,12 @@ function parseEvents(rawEvents: SorobanRpc.Api.SimulateTransactionResponse["even
     let data = ""
 
     try {
-      // ev is a raw DiagnosticEvent XDR base64 string in older SDK versions,
-      // or a parsed object in newer ones. Handle both.
-      if (typeof ev === "string") {
-        const parsed = xdr.DiagnosticEvent.fromXDR(ev, "base64")
-        const contractEvent = parsed.event()
-        type = contractEvent.type().name ?? "contract"
-        topics = contractEvent.body()
-          .v0()
-          .topics()
-          .map((t: xdr.ScVal) => scValToString(t))
-        data = scValToString(contractEvent.body().v0().data())
-      } else if (ev && typeof ev === "object" && "event" in ev) {
-        // Parsed SimulateHostFunctionResult event
-        const e = (ev as { event: xdr.DiagnosticEvent }).event
-        const contractEvent = e.event()
-        type = contractEvent.type().name ?? "contract"
-        topics = contractEvent.body().v0().topics().map((t: xdr.ScVal) => scValToString(t))
-        data = scValToString(contractEvent.body().v0().data())
-      }
+      const contractEvent = ev.event()
+      type = contractEvent.type().name ?? "contract"
+      topics = contractEvent.body().v0().topics().map((t: xdr.ScVal) => scValToString(t))
+      data = scValToString(contractEvent.body().v0().data())
     } catch {
-      // Fallback: just return the raw value
-      data = typeof ev === "string" ? ev : JSON.stringify(ev)
+      data = "(unparseable event)"
     }
 
     return { type, topics, data }
@@ -118,12 +101,12 @@ function scValToString(val: xdr.ScVal): string {
     if (t === "scvI128") {
       const hi = BigInt(val.i128().hi().toString())
       const lo = BigInt(val.i128().lo().toString())
-      return String((hi << 64n) | lo)
+      return String((hi << BigInt(64)) | lo)
     }
     if (t === "scvU128") {
       const hi = BigInt(val.u128().hi().toString())
       const lo = BigInt(val.u128().lo().toString())
-      return String((hi << 64n) | lo)
+      return String((hi << BigInt(64)) | lo)
     }
     if (t === "scvBool") return String(val.b())
     if (t === "scvAddress") return val.address().toString()
