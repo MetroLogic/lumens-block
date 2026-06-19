@@ -7,9 +7,10 @@ import { CompileContractError, deployContract } from "@/lib/stellar/deploy"
 interface Props {
   nodes: Node[]
   edges: Edge[]
+  disabled?: boolean
 }
 
-export default function DeployButton({ nodes, edges }: Props) {
+export default function DeployButton({ nodes, edges, disabled = false }: Props) {
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
   const [message, setMessage] = useState<string | null>(null)
 
@@ -41,14 +42,7 @@ export default function DeployButton({ nodes, edges }: Props) {
   }
 
   return (
-    <button
-      onClick={handleDeploy}
-      disabled={status === "deploying"}
-      className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
-    >
-      {labels[status]}
-    </button>
-    <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
+    <>
       {message && (
         <p
           role="status"
@@ -63,11 +57,12 @@ export default function DeployButton({ nodes, edges }: Props) {
       )}
       <button
         onClick={handleDeploy}
-        disabled={status === "deploying"}
-        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60"
+        disabled={status === "deploying" || disabled}
+        title={disabled ? "Fix failing tests or enable override to deploy" : undefined}
+        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
       >
         {labels[status]}
       </button>
-    </div>
+    </>
   )
 }

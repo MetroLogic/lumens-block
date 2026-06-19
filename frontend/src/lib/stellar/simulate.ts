@@ -1,4 +1,6 @@
-import type { ContractGraph } from "./deploy"
+import type { Edge, Node } from "reactflow"
+
+import { normalizeReactFlowGraph } from "@/lib/compile/validate"
 
 export interface SimulateArg {
   name: string
@@ -7,8 +9,9 @@ export interface SimulateArg {
 }
 
 export interface SimulateRequest {
-  graph: ContractGraph
+  graph: { nodes: Node[]; edges: Edge[] }
   args: SimulateArg[]
+  contractId?: string
 }
 
 export interface SimulateEvent {
@@ -40,10 +43,16 @@ export interface SimulateResult {
  * Returns structured simulation results without submitting a transaction to the chain.
  */
 export async function simulateContract(req: SimulateRequest): Promise<SimulateResult> {
+  const payload = {
+    graph: normalizeReactFlowGraph(req.graph),
+    args: req.args,
+    ...(req.contractId ? { contractId: req.contractId } : {}),
+  }
+
   const res = await fetch("/api/simulate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(payload),
   })
 
   if (!res.ok) {
@@ -58,7 +67,8 @@ export async function simulateContract(req: SimulateRequest): Promise<SimulateRe
  * Infer invocation arguments from the node graph.
  * Inspects node types to suggest relevant parameter names/types.
  */
-export function inferArgsFromGraph(graph: ContractGraph): SimulateArg[] {
+export function inferArgsFromGraph(graph: { nodes: Node[]; edges: Edge[] }): SimulateArg[] {
+  const normalized = normalizeReactFlowGraph(graph)
   const args: SimulateArg[] = []
   const seen = new Set<string>()
 
@@ -69,7 +79,7 @@ export function inferArgsFromGraph(graph: ContractGraph): SimulateArg[] {
     }
   }
 
-  for (const node of graph.nodes) {
+  for (const node of normalized.nodes) {
     switch (node.type) {
       case "Transfer":
         add("from", "address")

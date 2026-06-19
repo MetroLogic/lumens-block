@@ -27,3 +27,20 @@ export {
 
 export { compileGraphToWasm, isToolchainAvailable } from "./compiler"
 export type { CompileOptions } from "./compiler"
+
+export type {
+  ContractTestCase,
+  ContractTestCaseResult,
+  ContractTestExpected,
+  ContractTestInput,
+  ContractTestInputType,
+  ContractTestRequest,
+  ContractTestRunResult,
+} from "./test-schema"
+export { MAX_TEST_CASES } from "./test-schema"
+
+export { generateContractTests } from "./testCodegen"
+export { runContractTests } from "./testRunner"
+export type { TestRunOptions } from "./testRunner"
+export { getFunctionParamsFromGraph, paramRustTypeToInputType } from "./codegen"
+export type { FunctionParam } from "./codegen"
