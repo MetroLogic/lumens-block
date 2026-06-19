@@ -7,7 +7,7 @@ export interface CodegenResult {
   blockOrder: string[]
 }
 
-interface FunctionParam {
+export interface FunctionParam {
   name: string
   rustType: string
 }
@@ -58,6 +58,27 @@ export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
   }
 
   return order
+}
+
+export function getFunctionParamsFromGraph(graph: ContractGraph): FunctionParam[] {
+  const executionOrder = getExecutionOrder(graph)
+  const blockTypes = new Set(executionOrder.map((n) => n.type))
+  return deriveParams(blockTypes)
+}
+
+export function paramRustTypeToInputType(rustType: string): "address" | "number" | "boolean" | "symbol" {
+  switch (rustType) {
+    case "Address":
+      return "address"
+    case "i128":
+      return "number"
+    case "bool":
+      return "boolean"
+    case "Symbol":
+      return "symbol"
+    default:
+      return "symbol"
+  }
 }
 
 function deriveParams(blockTypes: Set<BlockType>): FunctionParam[] {
@@ -205,6 +226,28 @@ crate-type = ["cdylib"]
 
 [dependencies]
 soroban-sdk = { version = "21.0.0", features = ["alloc"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+`
+
+export const GENERATED_TEST_CARGO_TOML = `[package]
+name = "lumens-block-generated"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "21.0.0", features = ["alloc", "testutils"] }
 
 [profile.release]
 opt-level = "z"
