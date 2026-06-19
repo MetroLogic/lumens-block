@@ -63,6 +63,7 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
           {type}
         </div>
       ))}
+
       <div className="mt-2 pt-2 border-t border-gray-100">
         {onOpenTemplates && (
           <button
@@ -77,4 +78,3 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
     </div>
   )
 }
-
