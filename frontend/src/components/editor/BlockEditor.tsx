@@ -14,7 +14,6 @@ import "reactflow/dist/style.css"
 import { useCallback, useEffect, useState } from "react"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
-import { useCallback, useState } from "react"
 import DeployButton from "./DeployButton"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
@@ -42,7 +41,8 @@ export default function BlockEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
+  const [reactFlowInstance, setReactFlowInstance] =
+    useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
 
   const onConnect = useCallback(
@@ -59,9 +59,6 @@ export default function BlockEditor() {
     return () => window.removeEventListener("keydown", onKey)
   }, [shortcutsOpen])
 
-  return (
-    <div className="relative h-full w-full">
-      <Toolbar onOpenShortcuts={() => setShortcutsOpen(true)} />
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
@@ -79,7 +76,6 @@ export default function BlockEditor() {
         return
       }
 
-      // Convert screen coordinates to flow coordinates
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
@@ -97,13 +93,6 @@ export default function BlockEditor() {
     [reactFlowInstance, setNodes]
   )
 
-  return (
-    <div className="relative h-full w-full">
-      <Toolbar />
-      <div 
-        className="w-full h-full"
-        onDragOver={onDragOver}
-        onDrop={onDrop}
   const handleLoadTemplate = (graph: ContractGraph) => {
     const isNonEmpty =
       nodes.length > 1 ||
@@ -124,15 +113,12 @@ export default function BlockEditor() {
 
   return (
     <div className="relative h-full w-full">
-      <Toolbar onOpenTemplates={() => setIsTemplatesOpen(true)} />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        fitView
-      >
+      <Toolbar
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+        onOpenTemplates={() => setIsTemplatesOpen(true)}
+      />
+
+      <div className="w-full h-full" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -148,8 +134,12 @@ export default function BlockEditor() {
           <MiniMap />
         </ReactFlow>
       </div>
+
       <DeployButton nodes={nodes} edges={edges} />
-      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
+
+      {shortcutsOpen && (
+        <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />
+      )}
 
       <TemplatesModal
         isOpen={isTemplatesOpen}
@@ -159,4 +149,3 @@ export default function BlockEditor() {
     </div>
   )
 }
-
