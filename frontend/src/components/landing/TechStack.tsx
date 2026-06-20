@@ -42,7 +42,7 @@ export default function TechStack() {
               Production-Ready Code. Stellar Capabilities.
             </h2>
             <p className="text-slate-400 text-base leading-relaxed">
-              LumensBlock isn't just a simulator. It compiles your logical canvas into standard Soroban smart contracts, giving you the full performance, safety, and speed of Stellar's next-generation Rust-based smart contract platform.
+              LumensBlock {"isn't"} just a simulator. It compiles your logical canvas into standard Soroban smart contracts, giving you the full performance, safety, and speed of Stellar{"'"}s next-generation Rust-based smart contract platform.
             </p>
             <div className="flex flex-wrap items-center gap-6 mt-2">
               <div className="flex items-center gap-2 text-sm text-slate-300 font-mono bg-slate-900/60 border border-slate-800/80 px-3.5 py-1.5 rounded-lg">

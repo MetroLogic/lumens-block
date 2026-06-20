@@ -1,8 +1,27 @@
-import type { Node, Edge } from "reactflow"
+import type { Edge, Node } from "reactflow"
 
-export interface ContractGraph {
-  nodes: Node[]
-  edges: Edge[]
+import type { CompileError, ContractGraph as SchemaContractGraph } from "@/lib/compile/schema"
+import { normalizeReactFlowGraph } from "@/lib/compile/validate"
+
+/** @deprecated Import from `@/lib/compile/schema` for the canonical schema type. */
+export type ContractGraph = SchemaContractGraph
+
+export interface CompileResponse {
+  wasm: string
+  sourceHash: string
+  sizeBytes: number
+}
+
+export class CompileContractError extends Error {
+  readonly code: string
+  readonly details?: string[]
+
+  constructor(error: CompileError) {
+    super(error.message)
+    this.name = "CompileContractError"
+    this.code = error.code
+    this.details = error.details
+  }
 }
 
 /**
@@ -43,15 +62,55 @@ export async function connectWallet(): Promise<string> {
 }
 
 /**
- * Deploys a contract graph to Stellar Testnet.
- * Requires a connected wallet public key.
- * Stub — full Soroban deployment logic goes here.
+ * Sends a contract graph to the compile API and returns the WASM binary.
  */
-export async function deployContract(
-  graph: ContractGraph,
-  publicKey: string
-): Promise<string> {
-  console.log("Deploying contract for", publicKey, graph)
-  // TODO: compile graph → WASM, upload to Stellar, invoke contract creation
-  throw new Error("Deployment not yet implemented")
+export async function compileContract(graph: {
+  nodes: Node[]
+  edges: Edge[]
+}): Promise<CompileResponse> {
+  const payload = normalizeReactFlowGraph(graph)
+
+  const response = await fetch("/api/compile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+
+  const body = (await response.json()) as CompileResponse | { error: CompileError }
+
+  if (!response.ok) {
+    const error = "error" in body ? body.error : { code: "UNKNOWN", message: "Compilation failed." }
+    throw new CompileContractError(error)
+  }
+
+  return body as CompileResponse
+}
+
+function decodeWasmBase64(wasmBase64: string): Uint8Array {
+  const binary = atob(wasmBase64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
+
+/**
+ * Compiles a contract graph to WASM and returns a deployment summary.
+ * On-chain Soroban deployment will use the compiled WASM in a follow-up step.
+ */
+export async function deployContract(graph: {
+  nodes: Node[]
+  edges: Edge[]
+}): Promise<string> {
+  const publicKey = await connectWallet()
+  const compiled = await compileContract(graph)
+  const wasmBytes = decodeWasmBase64(compiled.wasm)
+
+  const digest = await crypto.subtle.digest("SHA-256", wasmBytes)
+  const hashHex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+
+  return `WASM compiled (${compiled.sizeBytes} bytes, hash ${hashHex.slice(0, 16)}) for ${publicKey.slice(0, 8)}…`
 }

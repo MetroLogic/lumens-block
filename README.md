@@ -1,5 +1,7 @@
 # LumensBlock
 
+[![CI](https://github.com/metro-logic/lumens-block/actions/workflows/ci.yml/badge.svg)](https://github.com/metro-logic/lumens-block/actions/workflows/ci.yml)
+
 **A visual drag-and-drop platform for building smart contracts and dApps on Stellar — no code required.**
 
 Stack blocks, configure logic, and deploy directly to the Stellar network.

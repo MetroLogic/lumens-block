@@ -15,9 +15,13 @@ import { useCallback, useEffect, useState } from "react"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
+import SimulateButton from "./SimulateButton"
+import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import type { ContractGraph } from "@/lib/stellar/deploy"
+import type { ContractTestRunResult } from "@/lib/stellar/test"
+import type { Edge, Node } from "reactflow"
 
 const nodeTypes = {
   Condition: BlockNode,
@@ -44,13 +48,14 @@ export default function BlockEditor() {
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
+  const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
+  const [overrideTestFailure, setOverrideTestFailure] = useState(false)
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
   )
 
-  // Open overlay on `?` key press
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
@@ -67,14 +72,10 @@ export default function BlockEditor() {
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault()
-
       if (!reactFlowInstance) return
 
       const type = event.dataTransfer.getData("application/blocktype")
-
-      if (typeof type === "undefined" || !type) {
-        return
-      }
+      if (typeof type === "undefined" || !type) return
 
       const position = reactFlowInstance.screenToFlowPosition({
         x: event.clientX,
@@ -106,17 +107,52 @@ export default function BlockEditor() {
       if (!confirmLoad) return
     }
 
-    setNodes(graph.nodes)
-    setEdges(graph.edges)
+    setNodes(graph.nodes as Node[])
+    setEdges(graph.edges as Edge[])
     setIsTemplatesOpen(false)
+    setTestResults(null)
+    setOverrideTestFailure(false)
   }
+
+  const onAddBlock = useCallback(
+    (type: string) => {
+      if (!reactFlowInstance) return
+
+      const position = reactFlowInstance.screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      })
+
+      const newNode = {
+        id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type,
+        position,
+        data: { label: type },
+      }
+
+      setNodes((nds) => nds.concat(newNode))
+    },
+    [reactFlowInstance, setNodes]
+  )
+
+  const handleTestResultsChange = useCallback((result: ContractTestRunResult | null) => {
+    setTestResults(result)
+    if (result?.allPassed) {
+      setOverrideTestFailure(false)
+    }
+  }, [])
+
+  const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
   return (
     <div className="relative h-full w-full">
       <Toolbar
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onAddBlock={onAddBlock}
       />
+
+      <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
 
       <div className="w-full h-full" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
@@ -135,12 +171,27 @@ export default function BlockEditor() {
         </ReactFlow>
       </div>
 
-      <DeployButton nodes={nodes} edges={edges} />
+      <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
+        {testsBlockingDeploy && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow">
+            <p className="font-semibold">Tests failed — deployment blocked</p>
+            <label className="mt-2 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={overrideTestFailure}
+                onChange={(e) => setOverrideTestFailure(e.target.checked)}
+              />
+              Override and deploy anyway
+            </label>
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <SimulateButton nodes={nodes} edges={edges} />
+          <DeployButton nodes={nodes} edges={edges} disabled={testsBlockingDeploy} />
+        </div>
+      </div>
 
-      {shortcutsOpen && (
-        <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />
-      )}
-
+      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
       <TemplatesModal
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}

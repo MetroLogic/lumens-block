@@ -2,46 +2,69 @@
 
 import { useState } from "react"
 import type { Node, Edge } from "reactflow"
-import { deployContract } from "@/lib/stellar/deploy"
-import { useWallet } from "@/components/wallet/WalletContext"
+import { CompileContractError, deployContract } from "@/lib/stellar/deploy"
 
 interface Props {
   nodes: Node[]
   edges: Edge[]
+  disabled?: boolean
 }
 
-export default function DeployButton({ nodes, edges }: Props) {
-  const { publicKey } = useWallet()
+export default function DeployButton({ nodes, edges, disabled = false }: Props) {
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
+  const [message, setMessage] = useState<string | null>(null)
 
   const handleDeploy = async () => {
     if (!publicKey) return
 
     setStatus("deploying")
+    setMessage(null)
+
     try {
-      await deployContract({ nodes, edges }, publicKey)
+      const result = await deployContract({ nodes, edges })
       setStatus("success")
-    } catch {
+      setMessage(result)
+    } catch (err) {
       setStatus("error")
+      if (err instanceof CompileContractError) {
+        setMessage(err.message)
+      } else if (err instanceof Error) {
+        setMessage(err.message)
+      } else {
+        setMessage("Deployment failed. Please try again.")
+      }
     }
   }
 
   const labels = {
-    idle: publicKey ? "Deploy Contract" : "Connect Wallet to Deploy",
-    deploying: "Deploying…",
-    success: "Deployed ✓",
+    idle: "Deploy Contract",
+    deploying: "Compiling...",
+    success: "Compiled ✓",
     error: "Failed — Retry",
   }
 
   return (
-    <button
-      id="deploy-contract-button"
-      onClick={handleDeploy}
-      disabled={status === "deploying" || !publicKey}
-      title={!publicKey ? "Connect your Freighter wallet first" : undefined}
-      className="absolute bottom-6 right-6 z-10 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-    >
-      {labels[status]}
-    </button>
+    <>
+      {message && (
+        <p
+          role="status"
+          className={`rounded-lg px-3 py-2 text-xs shadow ${
+            status === "error"
+              ? "bg-red-50 text-red-800 border border-red-200"
+              : "bg-green-50 text-green-800 border border-green-200"
+          }`}
+        >
+          {message}
+        </p>
+      )}
+      <button
+        onClick={handleDeploy}
+        disabled={status === "deploying" || disabled}
+        title={disabled ? "Fix failing tests or enable override to deploy" : undefined}
+        className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
+      >
+        {labels[status]}
+      </button>
+    </>
   )
 }
