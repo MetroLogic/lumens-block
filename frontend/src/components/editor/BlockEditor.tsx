@@ -19,6 +19,7 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
 import type { Edge, Node } from "reactflow"
@@ -49,19 +50,16 @@ export default function BlockEditor() {
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
+  const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
+  const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const [walletBalance, setWalletBalance] = useState<string>("—")
+  const [walletError, setWalletError] = useState<string | null>(null)
+  const [isWalletLoading, setIsWalletLoading] = useState(false)
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
   )
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [shortcutsOpen])
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -92,6 +90,24 @@ export default function BlockEditor() {
     },
     [reactFlowInstance, setNodes]
   )
+
+  const loadWalletInfo = useCallback(async () => {
+    setIsWalletLoading(true)
+    setWalletError(null)
+
+    try {
+      const address = await connectWallet()
+      const balance = await fetchWalletBalance(address, selectedNetwork)
+      setWalletAddress(address)
+      setWalletBalance(balance)
+    } catch (error) {
+      setWalletAddress(null)
+      setWalletBalance("—")
+      setWalletError(error instanceof Error ? error.message : "Unable to load wallet info")
+    } finally {
+      setIsWalletLoading(false)
+    }
+  }, [selectedNetwork])
 
   const handleLoadTemplate = (graph: ContractGraph) => {
     const isNonEmpty =
@@ -143,8 +159,43 @@ export default function BlockEditor() {
 
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [shortcutsOpen])
+
+  useEffect(() => {
+    void loadWalletInfo()
+  }, [loadWalletInfo])
+
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full bg-slate-50">
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur">
+        <select
+          value={selectedNetwork}
+          onChange={(event) => setSelectedNetwork(event.target.value as StellarNetwork)}
+          className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
+        >
+          <option value="testnet">Testnet</option>
+          <option value="mainnet">Mainnet</option>
+        </select>
+        <button
+          onClick={() => void loadWalletInfo()}
+          disabled={isWalletLoading}
+          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+        >
+          {isWalletLoading ? "Checking..." : walletAddress ? "Refresh" : "Connect"}
+        </button>
+        {walletAddress && (
+          <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+            {walletBalance} XLM
+          </span>
+        )}
+      </div>
+
       <Toolbar
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
@@ -153,7 +204,7 @@ export default function BlockEditor() {
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
 
-      <div className="w-full h-full" onDragOver={onDragOver} onDrop={onDrop}>
+      <div className="h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -186,7 +237,14 @@ export default function BlockEditor() {
         )}
         <div className="flex items-center gap-3">
           <SimulateButton nodes={nodes} edges={edges} />
-          <DeployButton nodes={nodes} edges={edges} disabled={testsBlockingDeploy} />
+          <DeployButton
+            nodes={nodes}
+            edges={edges}
+            selectedNetwork={selectedNetwork}
+            walletAddress={walletAddress}
+            walletBalance={walletBalance}
+            disabled={testsBlockingDeploy}
+          />
         </div>
       </div>
 
@@ -196,6 +254,12 @@ export default function BlockEditor() {
         onClose={() => setIsTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
       />
+
+      {walletError && (
+        <div className="absolute bottom-20 right-6 z-20 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow">
+          {walletError}
+        </div>
+      )}
     </div>
   )
 }
