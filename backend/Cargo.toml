@@ -1,0 +1,8 @@
+[package]
+name = "lumens-block-backend"
+version = "0.1.0"
+edition = "2021"
+description = "LumensBlock backend service — Soroban contract compilation and deployment API"
+license = "MIT"
+
+[dependencies]
