@@ -1,3 +1,57 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  .dark .react-flow {
+    background: #020617;
+  }
+
+  .dark .react-flow__background {
+    background-color: #020617;
+  }
+
+  .dark .react-flow__background-pattern dots circle {
+    fill: #334155;
+  }
+
+  .dark .react-flow__edge-path,
+  .dark .react-flow__connection-path {
+    stroke: #64748b;
+  }
+
+  .dark .react-flow__controls,
+  .dark .react-flow__minimap {
+    border-color: #334155;
+    background: rgba(15, 23, 42, 0.92);
+    box-shadow: 0 12px 32px rgba(2, 6, 23, 0.38);
+  }
+
+  .dark .react-flow__controls-button {
+    border-color: #334155;
+    background: #0f172a;
+    color: #cbd5e1;
+  }
+
+  .dark .react-flow__controls-button:hover {
+    background: #1e293b;
+  }
+
+  .dark .react-flow__controls-button svg {
+    fill: #cbd5e1;
+  }
+
+  .dark .react-flow__minimap-mask {
+    fill: rgba(15, 23, 42, 0.68);
+  }
+}

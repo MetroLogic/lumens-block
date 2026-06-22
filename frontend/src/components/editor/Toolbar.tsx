@@ -34,15 +34,15 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
   }
 
   return (
-    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-md">
+    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-md dark:border-slate-700 dark:bg-slate-900">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocks</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Blocks</p>
         {onOpenShortcuts && (
           <button
             onClick={onOpenShortcuts}
             aria-label="Show keyboard shortcuts"
             title="Keyboard shortcuts (?)"
-            className="ml-2 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-xs text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="ml-2 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-xs text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-200"
           >
             ?
           </button>
@@ -58,17 +58,17 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
           tabIndex={0}
           onDragStart={(e) => onDragStart(e, type)}
           onKeyDown={(e) => handleKeyDown(e, index, type)}
-          className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
         >
           {type}
         </div>
       ))}
 
       {onOpenTemplates && (
-        <div className="mt-2 border-t border-slate-100 pt-2">
+        <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
           <button
             onClick={onOpenTemplates}
-            className="flex w-full items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="flex w-full items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
           >
             <FolderOpen size={14} />
             Templates

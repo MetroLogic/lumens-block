@@ -4,33 +4,33 @@ import React from "react"
 import { Handle, Position } from "reactflow"
 
 export default function BlockNode({ type, data }: { type: string; data: { label: string } }) {
-  let colorClasses = "bg-white border-gray-300 text-gray-800"
-  let badgeColor = "bg-gray-100 text-gray-600"
+  let colorClasses = "bg-white border-gray-300 text-gray-800 dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100"
+  let badgeColor = "bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-300"
   
   switch (type) {
     case "Condition":
-      colorClasses = "bg-rose-50 border-rose-300 text-rose-900 shadow-rose-100"
-      badgeColor = "bg-rose-200/60 text-rose-800"
+      colorClasses = "bg-rose-50 border-rose-300 text-rose-900 shadow-rose-100 dark:bg-rose-950 dark:border-rose-700 dark:text-rose-100 dark:shadow-none"
+      badgeColor = "bg-rose-200/60 text-rose-800 dark:bg-rose-900 dark:text-rose-200"
       break
     case "Transfer":
-      colorClasses = "bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-100"
-      badgeColor = "bg-emerald-200/60 text-emerald-800"
+      colorClasses = "bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-100 dark:bg-emerald-950 dark:border-emerald-700 dark:text-emerald-100 dark:shadow-none"
+      badgeColor = "bg-emerald-200/60 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
       break
     case "Storage":
-      colorClasses = "bg-amber-50 border-amber-300 text-amber-900 shadow-amber-100"
-      badgeColor = "bg-amber-200/60 text-amber-800"
+      colorClasses = "bg-amber-50 border-amber-300 text-amber-900 shadow-amber-100 dark:bg-amber-950 dark:border-amber-700 dark:text-amber-100 dark:shadow-none"
+      badgeColor = "bg-amber-200/60 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
       break
     case "Event":
-      colorClasses = "bg-sky-50 border-sky-300 text-sky-900 shadow-sky-100"
-      badgeColor = "bg-sky-200/60 text-sky-800"
+      colorClasses = "bg-sky-50 border-sky-300 text-sky-900 shadow-sky-100 dark:bg-sky-950 dark:border-sky-700 dark:text-sky-100 dark:shadow-none"
+      badgeColor = "bg-sky-200/60 text-sky-800 dark:bg-sky-900 dark:text-sky-200"
       break
     case "Auth":
-      colorClasses = "bg-purple-50 border-purple-300 text-purple-900 shadow-purple-100"
-      badgeColor = "bg-purple-200/60 text-purple-800"
+      colorClasses = "bg-purple-50 border-purple-300 text-purple-900 shadow-purple-100 dark:bg-purple-950 dark:border-purple-700 dark:text-purple-100 dark:shadow-none"
+      badgeColor = "bg-purple-200/60 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
       break
     case "default":
-      colorClasses = "bg-blue-50 border-blue-300 text-blue-900 shadow-blue-100"
-      badgeColor = "bg-blue-200/60 text-blue-800"
+      colorClasses = "bg-blue-50 border-blue-300 text-blue-900 shadow-blue-100 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-100 dark:shadow-none"
+      badgeColor = "bg-blue-200/60 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
       break
   }
 
@@ -40,7 +40,7 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
       <Handle
         type="target"
         position={Position.Top}
-        className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
+        className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors dark:!bg-slate-500 dark:hover:!bg-blue-400"
       />
       
       <div className="flex flex-col items-center gap-1">
@@ -54,7 +54,7 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
+        className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors dark:!bg-slate-500 dark:hover:!bg-blue-400"
       />
     </div>
   )

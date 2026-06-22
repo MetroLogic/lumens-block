@@ -43,33 +43,33 @@ export default function ShortcutsOverlay({ onClose }: Props) {
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="w-full max-w-sm rounded-xl border bg-white shadow-xl outline-none"
+        className="w-full max-w-sm rounded-xl border border-gray-200 bg-white shadow-xl outline-none dark:border-slate-700 dark:bg-slate-900"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <h2 className="text-base font-semibold text-gray-800">Keyboard Shortcuts</h2>
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-slate-700">
+          <h2 className="text-base font-semibold text-gray-800 dark:text-slate-100">Keyboard Shortcuts</h2>
           <button
             onClick={onClose}
             aria-label="Close shortcuts overlay"
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 transition-colors hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-200"
           >
             ✕
           </button>
         </div>
 
         {/* Shortcut list */}
-        <ul className="divide-y px-5">
+        <ul className="divide-y divide-gray-100 px-5 dark:divide-slate-800">
           {SHORTCUTS.map(({ keys, description }) => (
             <li key={keys} className="flex items-center justify-between py-3">
-              <span className="text-sm text-gray-600">{description}</span>
-              <kbd className="rounded border bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700">
+              <span className="text-sm text-gray-600 dark:text-slate-300">{description}</span>
+              <kbd className="rounded border border-gray-200 bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {keys}
               </kbd>
             </li>
           ))}
         </ul>
 
-        <div className="px-5 pb-4 pt-2 text-xs text-gray-400">
+        <div className="px-5 pb-4 pt-2 text-xs text-gray-400 dark:text-slate-500">
           {isMac ? "macOS" : "Windows / Linux"} shortcuts shown
         </div>
       </div>

@@ -111,8 +111,8 @@ export default function DeployButton({
           role="status"
           className={`rounded-lg px-3 py-2 text-xs shadow ${
             status === "error"
-              ? "bg-red-50 text-red-800 border border-red-200"
-              : "bg-green-50 text-green-800 border border-green-200"
+              ? "bg-red-50 text-red-800 border border-red-200 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
+              : "bg-green-50 text-green-800 border border-green-200 dark:border-green-700 dark:bg-green-950 dark:text-green-200"
           }`}
         >
           {message}
@@ -129,36 +129,36 @@ export default function DeployButton({
 
       {isConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Confirm deployment</h3>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Confirm deployment</h3>
               <button
                 onClick={() => setIsConfirmOpen(false)}
-                className="text-sm text-slate-500 hover:text-slate-700"
+                className="text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
               >
                 Close
               </button>
             </div>
 
-            <div className="mt-4 space-y-3 text-sm text-slate-600">
-              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+            <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
                 <span>Estimated fee</span>
-                <span className="font-medium text-slate-900">
+                <span className="font-medium text-slate-900 dark:text-slate-100">
                   {isEstimating ? "Estimating..." : estimatedFee ? `${estimatedFee} XLM` : "—"}
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
                 <span>Wallet balance</span>
-                <span className="font-medium text-slate-900">{walletBalance} XLM</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">{walletBalance} XLM</span>
               </div>
             </div>
 
             {estimateError && (
-              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{estimateError}</p>
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-200">{estimateError}</p>
             )}
 
             {shortfall !== null && shortfall > 0 && (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                 Insufficient balance. You are short by {shortfall.toFixed(7)} XLM.
               </p>
             )}
@@ -166,14 +166,14 @@ export default function DeployButton({
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setIsConfirmOpen(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void handleDeploy()}
                 disabled={!walletAddress || !estimatedFee || !hasEnoughBalance || status === "deploying"}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-blue-300 dark:disabled:bg-blue-900"
               >
                 {status === "deploying" ? "Signing..." : "Confirm & Sign"}
               </button>

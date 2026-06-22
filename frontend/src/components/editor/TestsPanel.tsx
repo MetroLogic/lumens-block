@@ -119,17 +119,17 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
   const resultByCaseId = new Map(result?.cases.map((caseResult) => [caseResult.id, caseResult]))
 
   return (
-    <div className="absolute right-4 top-4 z-10 flex w-[360px] max-h-[calc(100%-6rem)] flex-col rounded-lg border bg-white shadow-md">
+    <div className="absolute right-4 top-20 z-10 flex w-[360px] max-h-[calc(100%-7rem)] flex-col rounded-lg border border-gray-200 bg-white shadow-md dark:border-slate-700 dark:bg-slate-900">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
-        className="flex items-center justify-between border-b px-4 py-3 text-left"
+        className="flex items-center justify-between border-b border-gray-200 px-4 py-3 text-left dark:border-slate-700"
       >
         <div>
-          <p className="text-sm font-semibold text-gray-900">Tests</p>
-          <p className="text-xs text-gray-400">Input values → expected output</p>
+          <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Tests</p>
+          <p className="text-xs text-gray-400 dark:text-slate-500">Input values → expected output</p>
         </div>
-        {isOpen ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+        {isOpen ? <ChevronUp size={16} className="text-gray-400 dark:text-slate-500" /> : <ChevronDown size={16} className="text-gray-400 dark:text-slate-500" />}
       </button>
 
       {isOpen && (
@@ -140,7 +140,7 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
               const isExpanded = expandedCaseId === testCase.id
 
               return (
-                <div key={testCase.id} className="rounded-lg border border-gray-100 bg-gray-50">
+                <div key={testCase.id} className="rounded-lg border border-gray-100 bg-gray-50 dark:border-slate-700 dark:bg-slate-800">
                   <button
                     type="button"
                     onClick={() => setExpandedCaseId(isExpanded ? null : testCase.id)}
@@ -154,30 +154,30 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
                           <XCircle size={14} className="text-red-500 shrink-0" />
                         )
                       ) : (
-                        <span className="h-3.5 w-3.5 rounded-full border border-gray-300 shrink-0" />
+                        <span className="h-3.5 w-3.5 rounded-full border border-gray-300 shrink-0 dark:border-slate-500" />
                       )}
-                      <span className="truncate text-sm font-medium text-gray-800">{testCase.name}</span>
+                      <span className="truncate text-sm font-medium text-gray-800 dark:text-slate-100">{testCase.name}</span>
                     </div>
                     {isExpanded ? (
-                      <ChevronUp size={14} className="text-gray-400 shrink-0" />
+                      <ChevronUp size={14} className="text-gray-400 shrink-0 dark:text-slate-500" />
                     ) : (
-                      <ChevronDown size={14} className="text-gray-400 shrink-0" />
+                      <ChevronDown size={14} className="text-gray-400 shrink-0 dark:text-slate-500" />
                     )}
                   </button>
 
                   {isExpanded && (
-                    <div className="space-y-3 border-t border-gray-100 px-3 py-3">
+                    <div className="space-y-3 border-t border-gray-100 px-3 py-3 dark:border-slate-700">
                       <div className="flex items-center gap-2">
                         <input
                           type="text"
                           value={testCase.name}
                           onChange={(e) => handleUpdateCase(testCase.id, { name: e.target.value })}
-                          className="flex-1 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+                          className="flex-1 rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
                         />
                         <button
                           type="button"
                           onClick={() => handleRemoveCase(testCase.id)}
-                          className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-950 dark:hover:text-red-300"
                           aria-label={`Remove ${testCase.name}`}
                         >
                           <Trash2 size={14} />
@@ -186,7 +186,7 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
 
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold uppercase text-gray-500">Inputs</p>
+                          <p className="text-xs font-semibold uppercase text-gray-500 dark:text-slate-400">Inputs</p>
                           <button
                             type="button"
                             onClick={() => syncInputsWithGraph(testCase.id)}
@@ -196,13 +196,13 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
                           </button>
                         </div>
                         {testCase.inputs.length === 0 ? (
-                          <p className="text-xs italic text-gray-400">No inputs inferred from graph.</p>
+                          <p className="text-xs italic text-gray-400 dark:text-slate-500">No inputs inferred from graph.</p>
                         ) : (
                           testCase.inputs.map((input) => (
                             <div key={input.name} className="space-y-1">
-                              <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                              <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-slate-300">
                                 <span>{input.name}</span>
-                                <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-gray-400">
+                                <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-gray-400 dark:bg-slate-950 dark:text-slate-500">
                                   {input.type}
                                 </span>
                               </label>
@@ -217,7 +217,7 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
                                     : ""
                                 }
                                 onChange={(e) => handleInputChange(testCase.id, input.name, e.target.value)}
-                                className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+                                className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
                               />
                             </div>
                           ))
@@ -225,8 +225,8 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase text-gray-500">Expected</p>
-                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <p className="text-xs font-semibold uppercase text-gray-500 dark:text-slate-400">Expected</p>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
                           <input
                             type="checkbox"
                             checked={testCase.expected.success}
@@ -250,12 +250,12 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
                               },
                             })
                           }
-                          className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
+                          className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 placeholder-gray-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
                         />
                       </div>
 
                       {caseResult && !caseResult.passed && caseResult.error && (
-                        <div className="rounded border border-red-200 bg-red-50 px-2 py-2 text-xs text-red-700">
+                        <div className="rounded border border-red-200 bg-red-50 px-2 py-2 text-xs text-red-700 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
                           <div className="mb-1 flex items-center gap-1 font-semibold">
                             <AlertCircle size={12} />
                             Failure output
@@ -272,14 +272,14 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
             <button
               type="button"
               onClick={handleAddCase}
-              className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-600 hover:border-gray-400 hover:bg-gray-50"
+              className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:bg-slate-800"
             >
               <Plus size={14} />
               Add test case
             </button>
 
             {error && (
-              <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
                 {error}
               </div>
             )}
@@ -288,8 +288,8 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
               <div
                 className={`rounded border px-3 py-2 text-xs ${
                   result.allPassed
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border-amber-200 bg-amber-50 text-amber-800"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200"
+                    : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
                 }`}
               >
                 {result.allPassed
@@ -299,7 +299,7 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
             )}
           </div>
 
-          <div className="border-t px-4 py-3">
+          <div className="border-t border-gray-200 px-4 py-3 dark:border-slate-700">
             <button
               type="button"
               onClick={handleRunTests}
