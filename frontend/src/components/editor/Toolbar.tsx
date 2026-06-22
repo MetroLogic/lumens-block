@@ -1,6 +1,6 @@
 "use client"
 
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Trash2 } from "lucide-react"
 import { useRef } from "react"
 
 const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
@@ -9,10 +9,19 @@ interface Props {
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
   onAddBlock?: (type: string) => void
+  selectedNodeCount?: number
+  onDeleteSelected?: () => void
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }: Props) {
+export default function Toolbar({
+  onOpenShortcuts,
+  onOpenTemplates,
+  onAddBlock,
+  selectedNodeCount = 0,
+  onDeleteSelected,
+}: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const hasSelection = selectedNodeCount > 0
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
     event.dataTransfer.setData("application/blocktype", blockType)
@@ -63,6 +72,31 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
           {type}
         </div>
       ))}
+
+      <div className="mt-2 border-t border-slate-100 pt-2">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Selection
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              hasSelection ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {selectedNodeCount}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onDeleteSelected}
+          disabled={!hasSelection}
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 shadow-sm transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:hover:bg-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+          title={hasSelection ? "Delete selected nodes" : "Select nodes to enable bulk delete"}
+        >
+          <Trash2 size={14} />
+          Delete selected
+        </button>
+      </div>
 
       {onOpenTemplates && (
         <div className="mt-2 border-t border-slate-100 pt-2">

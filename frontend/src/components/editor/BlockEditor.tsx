@@ -19,6 +19,7 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import { deleteSelectedNodes } from "./selection"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -55,6 +56,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const [selectedNodeCount, setSelectedNodeCount] = useState(0)
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -157,6 +159,21 @@ export default function BlockEditor() {
     }
   }, [])
 
+  const handleDeleteMutation = useCallback(() => {
+    setSelectedNodeCount(0)
+    setTestResults(null)
+    setOverrideTestFailure(false)
+  }, [])
+
+  const handleDeleteSelected = useCallback(() => {
+    const result = deleteSelectedNodes(nodes, edges)
+    if (result.deletedNodeIds.length === 0) return
+
+    setNodes(result.nodes)
+    setEdges(result.edges)
+    handleDeleteMutation()
+  }, [edges, handleDeleteMutation, nodes, setEdges, setNodes])
+
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
   useEffect(() => {
@@ -200,6 +217,8 @@ export default function BlockEditor() {
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         onAddBlock={onAddBlock}
+        selectedNodeCount={selectedNodeCount}
+        onDeleteSelected={handleDeleteSelected}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
@@ -212,7 +231,15 @@ export default function BlockEditor() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onInit={setReactFlowInstance}
+          onSelectionChange={({ nodes: selectedNodes }) => setSelectedNodeCount(selectedNodes.length)}
+          onNodesDelete={handleDeleteMutation}
+          onEdgesDelete={handleDeleteMutation}
           nodeTypes={nodeTypes}
+          deleteKeyCode={["Delete", "Backspace"]}
+          selectionOnDrag
+          panOnDrag={[1, 2]}
+          selectionKeyCode="Shift"
+          multiSelectionKeyCode={["Control", "Meta"]}
           fitView
         >
           <Background />
