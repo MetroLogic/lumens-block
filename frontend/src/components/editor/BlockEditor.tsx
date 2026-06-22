@@ -2,16 +2,18 @@
 
 import ReactFlow, {
   addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   Controls,
   MiniMap,
-  useEdgesState,
-  useNodesState,
   type Connection,
+  type EdgeChange,
+  type NodeChange,
   type ReactFlowInstance,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
@@ -19,6 +21,8 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import { useHistory } from "./useHistory"
+import type { GraphSnapshot } from "./historyReducer"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -33,7 +37,7 @@ const nodeTypes = {
   default: BlockNode,
 }
 
-const initialNodes = [
+const initialNodes: Node[] = [
   {
     id: "1",
     type: "default",
@@ -43,8 +47,8 @@ const initialNodes = [
 ]
 
 export default function BlockEditor() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const history = useHistory({ nodes: initialNodes, edges: [] })
+  const { nodes, edges } = history
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
@@ -55,10 +59,73 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const dragStartSnapshotRef = useRef<GraphSnapshot | null>(null)
+
+  const commitGraph = useCallback(
+    (nextNodes: Node[], nextEdges: Edge[]) => {
+      history.commit({ nodes: nextNodes, edges: nextEdges })
+      setTestResults(null)
+      setOverrideTestFailure(false)
+    },
+    [history]
+  )
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const nextNodes = applyNodeChanges(changes, nodes)
+      const shouldUpdateOnly = changes.every(
+        (change) => change.type === "select" || change.type === "dimensions"
+      )
+      const isLiveDrag = changes.some(
+        (change) => change.type === "position" && "dragging" in change && change.dragging
+      )
+
+      if (shouldUpdateOnly) {
+        history.update({ nodes: nextNodes, edges })
+        return
+      }
+
+      if (isLiveDrag) {
+        if (!dragStartSnapshotRef.current) {
+          dragStartSnapshotRef.current = { nodes, edges }
+        }
+        history.update({ nodes: nextNodes, edges })
+        return
+      }
+
+      if (dragStartSnapshotRef.current) {
+        history.commitFrom(dragStartSnapshotRef.current, { nodes: nextNodes, edges })
+        dragStartSnapshotRef.current = null
+        setTestResults(null)
+        setOverrideTestFailure(false)
+        return
+      }
+
+      commitGraph(nextNodes, edges)
+    },
+    [commitGraph, edges, history, nodes]
+  )
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const nextEdges = applyEdgeChanges(changes, edges)
+      const shouldUpdateOnly = changes.every((change) => change.type === "select")
+
+      if (shouldUpdateOnly) {
+        history.update({ nodes, edges: nextEdges })
+        return
+      }
+
+      commitGraph(nodes, nextEdges)
+    },
+    [commitGraph, edges, history, nodes]
+  )
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
-    [setEdges]
+    (connection: Connection) => {
+      commitGraph(nodes, addEdge(connection, edges))
+    },
+    [commitGraph, edges, nodes]
   )
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -86,9 +153,9 @@ export default function BlockEditor() {
         data: { label: type },
       }
 
-      setNodes((nds) => nds.concat(newNode))
+      commitGraph(nodes.concat(newNode), edges)
     },
-    [reactFlowInstance, setNodes]
+    [commitGraph, edges, nodes, reactFlowInstance]
   )
 
   const loadWalletInfo = useCallback(async () => {
@@ -122,8 +189,8 @@ export default function BlockEditor() {
       if (!confirmLoad) return
     }
 
-    setNodes(graph.nodes as Node[])
-    setEdges(graph.edges as Edge[])
+    history.replace({ nodes: graph.nodes as Node[], edges: graph.edges as Edge[] })
+    dragStartSnapshotRef.current = null
     setIsTemplatesOpen(false)
     setTestResults(null)
     setOverrideTestFailure(false)
@@ -145,9 +212,9 @@ export default function BlockEditor() {
         data: { label: type },
       }
 
-      setNodes((nds) => nds.concat(newNode))
+      commitGraph(nodes.concat(newNode), edges)
     },
-    [reactFlowInstance, setNodes]
+    [commitGraph, edges, nodes, reactFlowInstance]
   )
 
   const handleTestResultsChange = useCallback((result: ContractTestRunResult | null) => {
@@ -159,13 +226,51 @@ export default function BlockEditor() {
 
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
+  const undo = useCallback(() => {
+    if (!history.canUndo) return
+    history.undo()
+    setTestResults(null)
+    setOverrideTestFailure(false)
+  }, [history])
+
+  const redo = useCallback(() => {
+    if (!history.canRedo) return
+    history.redo()
+    setTestResults(null)
+    setOverrideTestFailure(false)
+  }, [history])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+      const target = e.target as HTMLElement | null
+      const isTyping =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable
+
+      if (e.key === "?" && !shortcutsOpen && !isTyping) {
+        setShortcutsOpen(true)
+      }
+
+      if ((e.ctrlKey || e.metaKey) && !isTyping) {
+        const key = e.key.toLowerCase()
+
+        if (key === "z" && e.shiftKey) {
+          e.preventDefault()
+          redo()
+        } else if (key === "z") {
+          e.preventDefault()
+          undo()
+        } else if (key === "y") {
+          e.preventDefault()
+          redo()
+        }
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [shortcutsOpen])
+  }, [redo, shortcutsOpen, undo])
 
   useEffect(() => {
     void loadWalletInfo()
@@ -200,6 +305,10 @@ export default function BlockEditor() {
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         onAddBlock={onAddBlock}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />

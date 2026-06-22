@@ -8,7 +8,7 @@ const mod = isMac ? "⌘" : "Ctrl"
 const SHORTCUTS = [
   { keys: `${mod}+K`, description: "Open block palette" },
   { keys: `${mod}+Z`, description: "Undo" },
-  { keys: `${mod}+Y`, description: "Redo" },
+  { keys: `${mod}+Shift+Z / ${mod}+Y`, description: "Redo" },
   { keys: "Delete / Backspace", description: "Remove selected block" },
   { keys: "Escape", description: "Close panel" },
   { keys: "Fit View", description: "Fit canvas to screen" },

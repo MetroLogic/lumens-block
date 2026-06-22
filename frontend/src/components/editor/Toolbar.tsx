@@ -1,6 +1,6 @@
 "use client"
 
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Redo2, Undo2 } from "lucide-react"
 import { useRef } from "react"
 
 const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
@@ -9,9 +9,21 @@ interface Props {
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
   onAddBlock?: (type: string) => void
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }: Props) {
+export default function Toolbar({
+  onOpenShortcuts,
+  onOpenTemplates,
+  onAddBlock,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
+}: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
@@ -64,8 +76,31 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
         </div>
       ))}
 
+      <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2">
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={!canUndo}
+          aria-label="Undo canvas change"
+          title="Undo (Ctrl+Z)"
+          className="flex h-8 items-center justify-center rounded border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Undo2 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={onRedo}
+          disabled={!canRedo}
+          aria-label="Redo canvas change"
+          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+          className="flex h-8 items-center justify-center rounded border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Redo2 size={16} />
+        </button>
+      </div>
+
       {onOpenTemplates && (
-        <div className="mt-2 border-t border-slate-100 pt-2">
+        <div className="border-t border-slate-100 pt-2">
           <button
             onClick={onOpenTemplates}
             className="flex w-full items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
