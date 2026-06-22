@@ -1,6 +1,6 @@
 "use client"
 
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Share2 } from "lucide-react"
 import { useRef } from "react"
 
 const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
@@ -9,9 +9,19 @@ interface Props {
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
   onAddBlock?: (type: string) => void
+  onShare?: () => void
+  isShareCopied?: boolean
+  shareDisabled?: boolean
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }: Props) {
+export default function Toolbar({
+  onOpenShortcuts,
+  onOpenTemplates,
+  onAddBlock,
+  onShare,
+  isShareCopied = false,
+  shareDisabled = false,
+}: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
@@ -64,15 +74,30 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
         </div>
       ))}
 
-      {onOpenTemplates && (
+      {(onOpenTemplates || onShare) && (
         <div className="mt-2 border-t border-slate-100 pt-2">
-          <button
-            onClick={onOpenTemplates}
-            className="flex w-full items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            <FolderOpen size={14} />
-            Templates
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {onOpenTemplates && (
+              <button
+                onClick={onOpenTemplates}
+                className="flex items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                <FolderOpen size={14} />
+                Templates
+              </button>
+            )}
+            {onShare && (
+              <button
+                onClick={onShare}
+                disabled={shareDisabled}
+                className="flex items-center justify-center gap-1.5 rounded border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                title={shareDisabled ? "Graphs with more than 30 nodes cannot be shared as a URL" : "Copy share URL"}
+              >
+                <Share2 size={14} />
+                {isShareCopied ? "Copied!" : "Share"}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
