@@ -42,6 +42,9 @@ export interface ContractGraphEdge {
   target: string
   sourceHandle?: string | null
   targetHandle?: string | null
+  data?: {
+    label?: string
+  }
 }
 
 export interface ContractGraph {

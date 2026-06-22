@@ -3,9 +3,41 @@
 import React from "react"
 import { Handle, Position } from "reactflow"
 
+const SOURCE_HANDLES: Record<string, Array<{ id: string; label: string; className: string; top: string }>> = {
+  Condition: [
+    {
+      id: "condition-true",
+      label: "true",
+      className: "!bg-emerald-500 hover:!bg-emerald-600",
+      top: "70%",
+    },
+    {
+      id: "condition-false",
+      label: "false",
+      className: "!bg-rose-500 hover:!bg-rose-600",
+      top: "88%",
+    },
+  ],
+  Transfer: [
+    {
+      id: "transfer-success",
+      label: "success",
+      className: "!bg-emerald-500 hover:!bg-emerald-600",
+      top: "70%",
+    },
+    {
+      id: "transfer-failure",
+      label: "failure",
+      className: "!bg-amber-500 hover:!bg-amber-600",
+      top: "88%",
+    },
+  ],
+}
+
 export default function BlockNode({ type, data }: { type: string; data: { label: string } }) {
   let colorClasses = "bg-white border-gray-300 text-gray-800"
   let badgeColor = "bg-gray-100 text-gray-600"
+  const sourceHandles = SOURCE_HANDLES[type] ?? []
   
   switch (type) {
     case "Condition":
@@ -50,12 +82,31 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
         <div className="text-sm font-semibold mt-1">{data.label}</div>
       </div>
 
-      {/* Source handle on bottom */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
-      />
+      {sourceHandles.length > 0 ? (
+        sourceHandles.map((handle) => (
+          <React.Fragment key={handle.id}>
+            <span
+              className="absolute -right-16 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500 shadow-sm"
+              style={{ top: handle.top, transform: "translateY(-50%)" }}
+            >
+              {handle.label}
+            </span>
+            <Handle
+              id={handle.id}
+              type="source"
+              position={Position.Right}
+              className={`!h-3 !w-3 transition-colors ${handle.className}`}
+              style={{ top: handle.top }}
+            />
+          </React.Fragment>
+        ))
+      ) : (
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
+        />
+      )}
     </div>
   )
 }

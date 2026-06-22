@@ -48,6 +48,8 @@
       "id": "e3-4",
       "source": "3",
       "target": "4",
+      "sourceHandle": "condition-true",
+      "data": { "label": "true" },
       "animated": true
     },
     {

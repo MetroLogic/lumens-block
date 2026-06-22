@@ -19,6 +19,8 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import LabeledEdge from "./edges/LabeledEdge"
+import { getDefaultEdgeLabel, normalizeEdgeLabel, type EdgeLabelData } from "./edges/edgeLabels"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -31,6 +33,21 @@ const nodeTypes = {
   Event: BlockNode,
   Auth: BlockNode,
   default: BlockNode,
+}
+
+function createLabeledEdge(edge: Edge | Connection): Edge<EdgeLabelData> {
+  const label = normalizeEdgeLabel((edge as Edge<EdgeLabelData>).data?.label) ?? getDefaultEdgeLabel(edge.sourceHandle)
+
+  return {
+    ...edge,
+    id:
+      "id" in edge && edge.id
+        ? edge.id
+        : `e${edge.source}-${edge.sourceHandle ?? "source"}-${edge.target}`,
+    type: "labeled",
+    animated: "animated" in edge ? edge.animated : true,
+    data: label ? { label } : {},
+  } as Edge<EdgeLabelData>
 }
 
 const initialNodes = [
@@ -50,14 +67,51 @@ export default function BlockEditor() {
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
+  const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null)
   const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
 
+  const handleEdgeLabelChange = useCallback(
+    (edgeId: string, label: string) => {
+      const normalized = normalizeEdgeLabel(label)
+
+      setEdges((currentEdges) =>
+        currentEdges.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                data: normalized ? { ...(edge.data ?? {}), label: normalized } : {},
+              }
+            : edge
+        )
+      )
+      setTestResults(null)
+      setOverrideTestFailure(false)
+    },
+    [setEdges]
+  )
+
+  const edgeTypes = {
+    labeled: (props: Parameters<typeof LabeledEdge>[0]) => (
+      <LabeledEdge
+        {...props}
+        isEditing={editingEdgeId === props.id}
+        onEditStart={setEditingEdgeId}
+        onEditEnd={() => setEditingEdgeId(null)}
+        onLabelChange={handleEdgeLabelChange}
+      />
+    ),
+  }
+
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
+    (connection: Connection) => {
+      setEdges((eds) => addEdge(createLabeledEdge(connection), eds))
+      setTestResults(null)
+      setOverrideTestFailure(false)
+    },
     [setEdges]
   )
 
@@ -123,7 +177,7 @@ export default function BlockEditor() {
     }
 
     setNodes(graph.nodes as Node[])
-    setEdges(graph.edges as Edge[])
+    setEdges((graph.edges as Edge[]).map(createLabeledEdge))
     setIsTemplatesOpen(false)
     setTestResults(null)
     setOverrideTestFailure(false)
@@ -211,8 +265,10 @@ export default function BlockEditor() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onEdgeClick={(_event, edge) => setEditingEdgeId(edge.id)}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           fitView
         >
           <Background />

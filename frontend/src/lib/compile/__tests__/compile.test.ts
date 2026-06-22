@@ -67,6 +67,29 @@ describe("validateContractGraph", () => {
       expect(result.error.code).toBe("INVALID_EDGE")
     }
   })
+
+  it("preserves normalized edge labels", () => {
+    const result = validateContractGraph({
+      nodes: [
+        { id: "1", type: "default", data: { label: "Start" } },
+        { id: "2", type: "Condition", data: { label: "Check" } },
+      ],
+      edges: [
+        {
+          id: "e1",
+          source: "1",
+          target: "2",
+          sourceHandle: "condition-true",
+          data: { label: "  true branch label that is longer than thirty two chars  " },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.graph.edges[0].data?.label).toBe("true branch label that is longer")
+    }
+  })
 })
 
 describe("validateGraphStructure", () => {

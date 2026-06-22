@@ -65,7 +65,7 @@ function parseEdge(raw: unknown, index: number): ContractGraphEdge | CompileErro
     return invalid("INVALID_EDGE", `Edge at index ${index} must be an object.`)
   }
 
-  const { id, source, target } = raw
+  const { id, source, target, data } = raw
 
   if (typeof id !== "string" || id.trim() === "") {
     return invalid("INVALID_EDGE", `Edge at index ${index} must have a non-empty string id.`)
@@ -85,6 +85,9 @@ function parseEdge(raw: unknown, index: number): ContractGraphEdge | CompileErro
     target,
     sourceHandle: typeof raw.sourceHandle === "string" ? raw.sourceHandle : null,
     targetHandle: typeof raw.targetHandle === "string" ? raw.targetHandle : null,
+    ...(isPlainObject(data) && typeof data.label === "string"
+      ? { data: { label: data.label.trim().slice(0, 32) } }
+      : {}),
   }
 }
 
@@ -290,7 +293,14 @@ export function normalizeReactFlowGraph(input: {
     position?: { x: number; y: number }
     data?: { label?: string; params?: unknown }
   }>
-  edges: Array<{ id: string; source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }>
+  edges: Array<{
+    id: string
+    source: string
+    target: string
+    sourceHandle?: string | null
+    targetHandle?: string | null
+    data?: { label?: unknown }
+  }>
 }): ContractGraph {
   return {
     nodes: input.nodes.map((node) => ({
@@ -308,6 +318,9 @@ export function normalizeReactFlowGraph(input: {
       target: edge.target,
       sourceHandle: edge.sourceHandle ?? null,
       targetHandle: edge.targetHandle ?? null,
+      ...(typeof edge.data?.label === "string" && edge.data.label.trim()
+        ? { data: { label: edge.data.label.trim().slice(0, 32) } }
+        : {}),
     })),
   }
 }

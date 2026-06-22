@@ -54,6 +54,8 @@
       "id": "e4-5",
       "source": "4",
       "target": "5",
+      "sourceHandle": "condition-true",
+      "data": { "label": "true" },
       "animated": true
     }
   ]

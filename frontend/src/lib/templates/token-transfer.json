@@ -42,6 +42,8 @@
       "id": "e3-4",
       "source": "3",
       "target": "4",
+      "sourceHandle": "transfer-success",
+      "data": { "label": "success" },
       "animated": true
     }
   ]
