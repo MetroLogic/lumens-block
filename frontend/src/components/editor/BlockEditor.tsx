@@ -19,17 +19,18 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import { AuthNode, ConditionNode, EventNode, StorageNode, TransferNode } from "./nodes"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
 import type { Edge, Node } from "reactflow"
 
 const nodeTypes = {
-  Condition: BlockNode,
-  Transfer: BlockNode,
-  Storage: BlockNode,
-  Event: BlockNode,
-  Auth: BlockNode,
+  Condition: ConditionNode,
+  Transfer: TransferNode,
+  Storage: StorageNode,
+  Event: EventNode,
+  Auth: AuthNode,
   default: BlockNode,
 }
 
