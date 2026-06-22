@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
-import { CompileContractError, deployContract, estimateDeploymentFee, type StellarNetwork } from "@/lib/stellar/deploy"
+import {
+  CompileContractError,
+  deployContract,
+  estimateDeploymentFee,
+  type DeployContractResult,
+  type StellarNetwork,
+} from "@/lib/stellar/deploy"
 
 interface Props {
   nodes: Node[]
@@ -11,6 +17,7 @@ interface Props {
   selectedNetwork: StellarNetwork
   walletAddress: string | null
   walletBalance: string
+  onDeploymentSuccess?: (result: DeployContractResult) => void
 }
 
 export default function DeployButton({
@@ -20,6 +27,7 @@ export default function DeployButton({
   selectedNetwork,
   walletAddress,
   walletBalance,
+  onDeploymentSuccess,
 }: Props) {
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
   const [message, setMessage] = useState<string | null>(null)
@@ -83,7 +91,8 @@ export default function DeployButton({
     try {
       const result = await deployContract({ nodes, edges }, selectedNetwork)
       setStatus("success")
-      setMessage(result)
+      setMessage(result.message)
+      onDeploymentSuccess?.(result)
       setIsConfirmOpen(false)
     } catch (err) {
       setStatus("error")

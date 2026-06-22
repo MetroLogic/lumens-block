@@ -1,6 +1,6 @@
 "use client"
 
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, History } from "lucide-react"
 import { useRef } from "react"
 
 const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
@@ -8,10 +8,11 @@ const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
 interface Props {
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
+  onOpenHistory?: () => void
   onAddBlock?: (type: string) => void
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }: Props) {
+export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onOpenHistory, onAddBlock }: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
@@ -64,15 +65,28 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
         </div>
       ))}
 
-      {onOpenTemplates && (
+      {(onOpenTemplates || onOpenHistory) && (
         <div className="mt-2 border-t border-slate-100 pt-2">
-          <button
-            onClick={onOpenTemplates}
-            className="flex w-full items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            <FolderOpen size={14} />
-            Templates
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {onOpenTemplates && (
+              <button
+                onClick={onOpenTemplates}
+                className="flex items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                <FolderOpen size={14} />
+                Templates
+              </button>
+            )}
+            {onOpenHistory && (
+              <button
+                onClick={onOpenHistory}
+                className="flex items-center justify-center gap-1.5 rounded border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                <History size={14} />
+                History
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

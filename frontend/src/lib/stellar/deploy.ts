@@ -27,6 +27,18 @@ export class CompileContractError extends Error {
 
 export type StellarNetwork = "testnet" | "mainnet"
 
+export interface DeployContractResult {
+  message: string
+  network: StellarNetwork
+  deployer: string
+  estimatedFee: string
+  wasmHash: string
+  sourceHash: string
+  sizeBytes: number
+  contractId?: string
+  transactionHash?: string
+}
+
 const NETWORK_CONFIG: Record<StellarNetwork, { horizonUrl: string; rpcUrl: string; passphrase: string }> = {
   testnet: {
     horizonUrl: "https://horizon-testnet.stellar.org",
@@ -157,7 +169,7 @@ function decodeWasmBase64(wasmBase64: string): Uint8Array {
 export async function deployContract(
   graph: { nodes: Node[]; edges: Edge[] },
   network: StellarNetwork = "testnet"
-): Promise<string> {
+): Promise<DeployContractResult> {
   const publicKey = await connectWallet()
   const compiled = await compileContract(graph)
   const wasmBytes = decodeWasmBase64(compiled.wasm)
@@ -169,5 +181,15 @@ export async function deployContract(
 
   const estimatedFee = await estimateDeploymentFee(graph, network, publicKey)
 
-  return `WASM compiled (${compiled.sizeBytes} bytes, hash ${hashHex.slice(0, 16)}) for ${publicKey.slice(0, 8)}… (estimated fee ${estimatedFee} XLM)`
+  const message = `WASM compiled (${compiled.sizeBytes} bytes, hash ${hashHex.slice(0, 16)}) for ${publicKey.slice(0, 8)}... (estimated fee ${estimatedFee} XLM)`
+
+  return {
+    message,
+    network,
+    deployer: publicKey,
+    estimatedFee,
+    wasmHash: hashHex,
+    sourceHash: compiled.sourceHash,
+    sizeBytes: compiled.sizeBytes,
+  }
 }

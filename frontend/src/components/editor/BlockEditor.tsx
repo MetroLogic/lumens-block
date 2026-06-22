@@ -15,12 +15,14 @@ import { useCallback, useEffect, useState } from "react"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
+import DeploymentHistory from "./DeploymentHistory"
 import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
-import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
+import { connectWallet, fetchWalletBalance, type DeployContractResult, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
+import { appendDeploymentRecord } from "@/lib/stellar/deploymentHistory"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
 import type { Edge, Node } from "reactflow"
 
@@ -48,6 +50,8 @@ export default function BlockEditor() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
+  const [isDeploymentHistoryOpen, setIsDeploymentHistoryOpen] = useState(false)
+  const [deploymentHistoryRefresh, setDeploymentHistoryRefresh] = useState(0)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
   const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
@@ -157,6 +161,21 @@ export default function BlockEditor() {
     }
   }, [])
 
+  const handleDeploymentSuccess = useCallback((result: DeployContractResult) => {
+    appendDeploymentRecord({
+      network: result.network,
+      contractId: result.contractId,
+      transactionHash: result.transactionHash,
+      deployer: result.deployer,
+      estimatedFee: result.estimatedFee,
+      wasmHash: result.wasmHash,
+      sourceHash: result.sourceHash,
+      sizeBytes: result.sizeBytes,
+      message: result.message,
+    })
+    setDeploymentHistoryRefresh((value) => value + 1)
+  }, [])
+
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
   useEffect(() => {
@@ -199,6 +218,7 @@ export default function BlockEditor() {
       <Toolbar
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onOpenHistory={() => setIsDeploymentHistoryOpen(true)}
         onAddBlock={onAddBlock}
       />
 
@@ -244,6 +264,7 @@ export default function BlockEditor() {
             walletAddress={walletAddress}
             walletBalance={walletBalance}
             disabled={testsBlockingDeploy}
+            onDeploymentSuccess={handleDeploymentSuccess}
           />
         </div>
       </div>
@@ -253,6 +274,11 @@ export default function BlockEditor() {
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
+      />
+      <DeploymentHistory
+        isOpen={isDeploymentHistoryOpen}
+        onClose={() => setIsDeploymentHistoryOpen(false)}
+        refreshToken={deploymentHistoryRefresh}
       />
 
       {walletError && (
