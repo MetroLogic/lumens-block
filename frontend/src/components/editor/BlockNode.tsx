@@ -2,8 +2,24 @@
 
 import React from "react"
 import { Handle, Position } from "reactflow"
+import type { BlockParameters } from "@/lib/compile/schema"
+import { formatAssetLabel } from "@/lib/stellar/assets"
 
-export default function BlockNode({ type, data }: { type: string; data: { label: string } }) {
+function getParamSummary(type: string, params?: BlockParameters): string | null {
+  if (type === "Transfer") {
+    return `Asset: ${formatAssetLabel(params)}`
+  }
+
+  return null
+}
+
+export default function BlockNode({
+  type,
+  data,
+}: {
+  type: string
+  data: { label: string; params?: BlockParameters }
+}) {
   let colorClasses = "bg-white border-gray-300 text-gray-800"
   let badgeColor = "bg-gray-100 text-gray-600"
   
@@ -34,6 +50,8 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
       break
   }
 
+  const summary = getParamSummary(type, data.params)
+
   return (
     <div className={`relative px-4 py-3 rounded-xl border-2 shadow-sm font-sans min-w-[150px] text-center ${colorClasses}`}>
       {/* Target handle on top */}
@@ -48,6 +66,7 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
           {type === "default" ? "Start" : type}
         </span>
         <div className="text-sm font-semibold mt-1">{data.label}</div>
+        {summary && <div className="max-w-[160px] truncate text-[11px] text-slate-600">{summary}</div>}
       </div>
 
       {/* Source handle on bottom */}

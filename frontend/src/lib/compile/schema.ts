@@ -17,6 +17,12 @@ export type BlockType = (typeof BLOCK_TYPES)[number]
 export interface BlockParameters {
   /** Token contract address for Transfer blocks */
   token?: string
+  /** Asset selector mode for Transfer blocks */
+  assetType?: "native" | "sac"
+  /** Human-readable token symbol fetched from a SAC contract */
+  assetSymbol?: string
+  /** Human-readable token name fetched from a SAC contract */
+  assetName?: string
   /** Storage key for Storage blocks */
   storageKey?: string
   /** Event name for Event blocks */

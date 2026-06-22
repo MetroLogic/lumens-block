@@ -16,6 +16,38 @@ describe("validateContractGraph", () => {
     }
   })
 
+  it("preserves Transfer asset selector params during graph validation", () => {
+    const result = validateContractGraph({
+      nodes: [
+        { id: "1", type: "default", data: { label: "Start" } },
+        {
+          id: "2",
+          type: "Transfer",
+          data: {
+            label: "Pay USDC",
+            params: {
+              assetType: "sac",
+              token: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              assetSymbol: "USDC",
+              assetName: "USD Coin",
+            },
+          },
+        },
+      ],
+      edges: [{ id: "e1", source: "1", target: "2" }],
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.graph.nodes[1].data.params).toEqual({
+        assetType: "sac",
+        token: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        assetSymbol: "USDC",
+        assetName: "USD Coin",
+      })
+    }
+  })
+
   it("rejects malformed JSON payloads", () => {
     const result = validateContractGraph("not-an-object")
     expect(result.ok).toBe(false)

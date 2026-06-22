@@ -48,6 +48,9 @@
               "type": "object",
               "properties": {
                 "token": { "type": "string" },
+                "assetType": { "type": "string", "enum": ["native", "sac"] },
+                "assetSymbol": { "type": "string" },
+                "assetName": { "type": "string" },
                 "storageKey": { "type": "string" },
                 "eventName": { "type": "string" },
                 "condition": { "type": "string" }

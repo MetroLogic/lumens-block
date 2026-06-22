@@ -16,7 +16,7 @@
       "id": "3",
       "type": "Transfer",
       "position": { "x": 250, "y": 250 },
-      "data": { "label": "Transfer Tokens" }
+      "data": { "label": "Transfer Tokens", "params": { "assetType": "native" } }
     },
     {
       "id": "4",
