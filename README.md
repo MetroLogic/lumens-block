@@ -73,6 +73,13 @@ npm install
 
 # Run the development server
 npm run dev
+
+# Run the unit test suite
+npm test
+
+# Run the Playwright end-to-end tests
+# The Playwright config starts the local Next.js dev server automatically.
+npm run test:e2e
 ```
 
 Open [http://localhost:3000](http://localhost:3000) and click **Open Editor** to start building.

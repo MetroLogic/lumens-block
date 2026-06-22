@@ -51,6 +51,7 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
       {BLOCK_TYPES.map((type, index) => (
         <div
           key={type}
+          data-testid={`block-${type.toLowerCase()}`}
           ref={(el) => {
             itemRefs.current[index] = el
           }}

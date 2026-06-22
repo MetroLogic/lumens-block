@@ -4,6 +4,8 @@ import React from "react"
 import { Handle, Position } from "reactflow"
 
 export default function BlockNode({ type, data }: { type: string; data: { label: string } }) {
+  const nodeLabel = data.label || type
+  const testId = `node-${nodeLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "block"}`
   let colorClasses = "bg-white border-gray-300 text-gray-800"
   let badgeColor = "bg-gray-100 text-gray-600"
   
@@ -35,11 +37,15 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
   }
 
   return (
-    <div className={`relative px-4 py-3 rounded-xl border-2 shadow-sm font-sans min-w-[150px] text-center ${colorClasses}`}>
+    <div
+      data-testid={testId}
+      className={`relative px-4 py-3 rounded-xl border-2 shadow-sm font-sans min-w-[150px] text-center ${colorClasses}`}
+    >
       {/* Target handle on top */}
       <Handle
         type="target"
         position={Position.Top}
+        data-testid={`${testId}-target`}
         className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
       />
       
@@ -47,13 +53,14 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColor}`}>
           {type === "default" ? "Start" : type}
         </span>
-        <div className="text-sm font-semibold mt-1">{data.label}</div>
+        <div className="text-sm font-semibold mt-1">{nodeLabel}</div>
       </div>
 
       {/* Source handle on bottom */}
       <Handle
         type="source"
         position={Position.Bottom}
+        data-testid={`${testId}-source`}
         className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
       />
     </div>
