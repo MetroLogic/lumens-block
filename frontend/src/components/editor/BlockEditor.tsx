@@ -19,6 +19,7 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import { validateGraph } from "@/lib/validation/validateGraph"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -157,7 +158,31 @@ export default function BlockEditor() {
     }
   }, [])
 
+  const graphValidation = validateGraph({ nodes, edges })
+  const validationIssuesByNode = graphValidation.issues.reduce<Record<string, string[]>>((acc, issue) => {
+    if (!issue.nodeId) return acc
+    acc[issue.nodeId] = [...(acc[issue.nodeId] ?? []), issue.message]
+    return acc
+  }, {})
+  const validatedNodes = nodes.map((node) => {
+    const messages = validationIssuesByNode[node.id] ?? []
+
+    return {
+      ...node,
+      data: {
+        ...(node.data ?? {}),
+        validationError: messages.length > 0,
+        validationMessages: messages,
+      },
+    }
+  })
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
+  const validationBlockingDeploy = !graphValidation.valid
+  const deployDisabledReason = validationBlockingDeploy
+    ? "Resolve graph validation errors before deploying"
+    : testsBlockingDeploy
+      ? "Fix failing tests or enable override to deploy"
+      : undefined
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -206,7 +231,7 @@ export default function BlockEditor() {
 
       <div className="h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
-          nodes={nodes}
+          nodes={validatedNodes}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -222,6 +247,21 @@ export default function BlockEditor() {
       </div>
 
       <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
+        {validationBlockingDeploy && (
+          <div className="max-h-48 overflow-y-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow">
+            <p className="font-semibold">Graph validation failed</p>
+            <ul className="mt-1 list-disc space-y-1 pl-4">
+              {graphValidation.issues.slice(0, 5).map((issue) => (
+                <li key={`${issue.code}-${issue.nodeId ?? issue.edgeId ?? issue.message}`}>
+                  {issue.message}
+                </li>
+              ))}
+            </ul>
+            {graphValidation.issues.length > 5 && (
+              <p className="mt-1 text-red-700">+{graphValidation.issues.length - 5} more issues</p>
+            )}
+          </div>
+        )}
         {testsBlockingDeploy && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow">
             <p className="font-semibold">Tests failed — deployment blocked</p>
@@ -243,7 +283,8 @@ export default function BlockEditor() {
             selectedNetwork={selectedNetwork}
             walletAddress={walletAddress}
             walletBalance={walletBalance}
-            disabled={testsBlockingDeploy}
+            disabled={testsBlockingDeploy || validationBlockingDeploy}
+            disabledReason={deployDisabledReason}
           />
         </div>
       </div>

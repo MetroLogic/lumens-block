@@ -11,6 +11,7 @@ interface Props {
   selectedNetwork: StellarNetwork
   walletAddress: string | null
   walletBalance: string
+  disabledReason?: string
 }
 
 export default function DeployButton({
@@ -20,6 +21,7 @@ export default function DeployButton({
   selectedNetwork,
   walletAddress,
   walletBalance,
+  disabledReason,
 }: Props) {
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
   const [message, setMessage] = useState<string | null>(null)
@@ -121,7 +123,7 @@ export default function DeployButton({
       <button
         onClick={() => setIsConfirmOpen(true)}
         disabled={status === "deploying" || disabled}
-        title={disabled ? "Fix failing tests or enable override to deploy" : undefined}
+        title={disabled ? disabledReason ?? "Fix blocking issues before deploying" : undefined}
         className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-700 disabled:opacity-60 transition-colors"
       >
         {labels[status]}
