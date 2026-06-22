@@ -19,6 +19,8 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import CommandPalette from "./CommandPalette"
+import { isEditorBlockType, type EditorBlockType } from "./blockCatalog"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -47,6 +49,7 @@ export default function BlockEditor() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
@@ -66,19 +69,11 @@ export default function BlockEditor() {
     event.dataTransfer.dropEffect = "move"
   }, [])
 
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault()
+  const addBlockAtScreenPoint = useCallback(
+    (type: EditorBlockType, point: { x: number; y: number }) => {
       if (!reactFlowInstance) return
 
-      const type = event.dataTransfer.getData("application/blocktype")
-      if (typeof type === "undefined" || !type) return
-
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      })
-
+      const position = reactFlowInstance.screenToFlowPosition(point)
       const newNode = {
         id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
@@ -87,8 +82,38 @@ export default function BlockEditor() {
       }
 
       setNodes((nds) => nds.concat(newNode))
+      setTestResults(null)
+      setOverrideTestFailure(false)
     },
     [reactFlowInstance, setNodes]
+  )
+
+  const addBlockAtViewportCenter = useCallback(
+    (type: EditorBlockType) => {
+      const flowPane = document.querySelector(".react-flow") as HTMLElement | null
+      const rect = flowPane?.getBoundingClientRect()
+      const point = rect
+        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+
+      addBlockAtScreenPoint(type, point)
+    },
+    [addBlockAtScreenPoint]
+  )
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault()
+
+      const type = event.dataTransfer.getData("application/blocktype")
+      if (!isEditorBlockType(type)) return
+
+      addBlockAtScreenPoint(type, {
+        x: event.clientX,
+        y: event.clientY,
+      })
+    },
+    [addBlockAtScreenPoint]
   )
 
   const loadWalletInfo = useCallback(async () => {
@@ -130,24 +155,10 @@ export default function BlockEditor() {
   }
 
   const onAddBlock = useCallback(
-    (type: string) => {
-      if (!reactFlowInstance) return
-
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
-      })
-
-      const newNode = {
-        id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        type,
-        position,
-        data: { label: type },
-      }
-
-      setNodes((nds) => nds.concat(newNode))
+    (type: EditorBlockType) => {
+      addBlockAtViewportCenter(type)
     },
-    [reactFlowInstance, setNodes]
+    [addBlockAtViewportCenter]
   )
 
   const handleTestResultsChange = useCallback((result: ContractTestRunResult | null) => {
@@ -161,6 +172,19 @@ export default function BlockEditor() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const isTextInput =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        setIsCommandPaletteOpen(true)
+        return
+      }
+
+      if (isTextInput) return
       if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
     }
     window.addEventListener("keydown", onKey)
@@ -197,6 +221,7 @@ export default function BlockEditor() {
       </div>
 
       <Toolbar
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         onAddBlock={onAddBlock}
@@ -249,6 +274,12 @@ export default function BlockEditor() {
       </div>
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
+      {isCommandPaletteOpen && (
+        <CommandPalette
+          onClose={() => setIsCommandPaletteOpen(false)}
+          onSelectBlock={addBlockAtViewportCenter}
+        />
+      )}
       <TemplatesModal
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}

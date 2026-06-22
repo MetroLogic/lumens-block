@@ -1,34 +1,40 @@
 "use client"
 
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Search } from "lucide-react"
 import { useRef } from "react"
 
-const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
+import { BLOCK_CATALOG, type EditorBlockType } from "./blockCatalog"
 
 interface Props {
+  onOpenCommandPalette?: () => void
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
-  onAddBlock?: (type: string) => void
+  onAddBlock?: (type: EditorBlockType) => void
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }: Props) {
+export default function Toolbar({
+  onOpenCommandPalette,
+  onOpenShortcuts,
+  onOpenTemplates,
+  onAddBlock,
+}: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  const onDragStart = (event: React.DragEvent, blockType: string) => {
+  const onDragStart = (event: React.DragEvent, blockType: EditorBlockType) => {
     event.dataTransfer.setData("application/blocktype", blockType)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, index: number, type: string) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, index: number, type: EditorBlockType) => {
     if (e.key === "Enter") {
       e.preventDefault()
       onAddBlock?.(type)
     } else if (e.key === "ArrowDown") {
       e.preventDefault()
-      const nextIndex = (index + 1) % BLOCK_TYPES.length
+      const nextIndex = (index + 1) % BLOCK_CATALOG.length
       itemRefs.current[nextIndex]?.focus()
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
-      const prevIndex = (index - 1 + BLOCK_TYPES.length) % BLOCK_TYPES.length
+      const prevIndex = (index - 1 + BLOCK_CATALOG.length) % BLOCK_CATALOG.length
       itemRefs.current[prevIndex]?.focus()
     }
   }
@@ -48,7 +54,17 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
           </button>
         )}
       </div>
-      {BLOCK_TYPES.map((type, index) => (
+      {onOpenCommandPalette && (
+        <button
+          onClick={onOpenCommandPalette}
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <Search size={14} />
+          Quick add
+        </button>
+      )}
+
+      {BLOCK_CATALOG.map(({ type, name }, index) => (
         <div
           key={type}
           ref={(el) => {
@@ -60,7 +76,7 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
           onKeyDown={(e) => handleKeyDown(e, index, type)}
           className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {type}
+          {name}
         </div>
       ))}
 
