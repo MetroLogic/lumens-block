@@ -1,6 +1,6 @@
 "use client"
 
-import { FolderOpen } from "lucide-react"
+import { Download, FilePlus, FolderOpen, Upload } from "lucide-react"
 import { useRef } from "react"
 
 const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
@@ -9,9 +9,19 @@ interface Props {
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
   onAddBlock?: (type: string) => void
+  onNewGraph?: () => void
+  onExportGraph?: () => void
+  onImportGraph?: () => void
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }: Props) {
+export default function Toolbar({
+  onOpenShortcuts,
+  onOpenTemplates,
+  onAddBlock,
+  onNewGraph,
+  onExportGraph,
+  onImportGraph,
+}: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
@@ -63,6 +73,44 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
           {type}
         </div>
       ))}
+
+      {(onNewGraph || onExportGraph || onImportGraph) && (
+        <div className="mt-2 grid grid-cols-3 gap-1 border-t border-slate-100 pt-2">
+          {onNewGraph && (
+            <button
+              type="button"
+              onClick={onNewGraph}
+              aria-label="New graph"
+              title="New graph"
+              className="flex h-8 items-center justify-center rounded border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <FilePlus size={15} />
+            </button>
+          )}
+          {onImportGraph && (
+            <button
+              type="button"
+              onClick={onImportGraph}
+              aria-label="Import JSON"
+              title="Import JSON"
+              className="flex h-8 items-center justify-center rounded border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <Upload size={15} />
+            </button>
+          )}
+          {onExportGraph && (
+            <button
+              type="button"
+              onClick={onExportGraph}
+              aria-label="Export JSON"
+              title="Export JSON"
+              className="flex h-8 items-center justify-center rounded border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <Download size={15} />
+            </button>
+          )}
+        </div>
+      )}
 
       {onOpenTemplates && (
         <div className="mt-2 border-t border-slate-100 pt-2">

@@ -11,7 +11,7 @@ import ReactFlow, {
   type ReactFlowInstance,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
@@ -22,6 +22,15 @@ import TemplatesModal from "./TemplatesModal"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
+import {
+  GRAPH_EXPORT_FILE_NAME,
+  GRAPH_STORAGE_KEY,
+  graphToJson,
+  graphToReactFlow,
+  readStoredGraph,
+  validateGraphJsonText,
+  writeStoredGraph,
+} from "@/lib/editor/graphStorage"
 import type { Edge, Node } from "reactflow"
 
 const nodeTypes = {
@@ -33,7 +42,7 @@ const nodeTypes = {
   default: BlockNode,
 }
 
-const initialNodes = [
+const initialNodes: Node[] = [
   {
     id: "1",
     type: "default",
@@ -42,12 +51,36 @@ const initialNodes = [
   },
 ]
 
+function createInitialNodes() {
+  return initialNodes.map((node) => ({
+    ...node,
+    position: { ...node.position },
+    data: { ...node.data },
+  }))
+}
+
+type GraphMessage = {
+  type: "success" | "error" | "info"
+  text: string
+}
+
 export default function BlockEditor() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [initialStoredGraph] = useState(() => {
+    if (typeof window === "undefined") return null
+    return readStoredGraph(window.localStorage)
+  })
+  const initialFlowGraph = initialStoredGraph?.ok ? graphToReactFlow(initialStoredGraph.graph) : null
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialFlowGraph?.nodes ?? createInitialNodes())
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialFlowGraph?.edges ?? [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
+  const [graphMessage, setGraphMessage] = useState<GraphMessage | null>(() => {
+    if (initialStoredGraph && !initialStoredGraph.ok) {
+      return { type: "error", text: `Saved graph could not be restored: ${initialStoredGraph.error.message}` }
+    }
+    return null
+  })
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
   const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
@@ -55,6 +88,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -109,6 +143,18 @@ export default function BlockEditor() {
     }
   }, [selectedNetwork])
 
+  const loadGraph = useCallback(
+    (graph: ContractGraph, message?: GraphMessage) => {
+      const flowGraph = graphToReactFlow(graph)
+      setNodes(flowGraph.nodes)
+      setEdges(flowGraph.edges)
+      setTestResults(null)
+      setOverrideTestFailure(false)
+      if (message) setGraphMessage(message)
+    },
+    [setEdges, setNodes]
+  )
+
   const handleLoadTemplate = (graph: ContractGraph) => {
     const isNonEmpty =
       nodes.length > 1 ||
@@ -122,12 +168,56 @@ export default function BlockEditor() {
       if (!confirmLoad) return
     }
 
-    setNodes(graph.nodes as Node[])
-    setEdges(graph.edges as Edge[])
+    loadGraph(graph, { type: "success", text: "Template loaded." })
     setIsTemplatesOpen(false)
+  }
+
+  const handleNewGraph = useCallback(() => {
+    const confirmNew = window.confirm("Start a new graph? This will clear the current canvas.")
+    if (!confirmNew) return
+
+    setNodes(createInitialNodes())
+    setEdges([])
     setTestResults(null)
     setOverrideTestFailure(false)
-  }
+    window.localStorage.removeItem(GRAPH_STORAGE_KEY)
+    setGraphMessage({ type: "info", text: "New graph created." })
+  }, [setEdges, setNodes])
+
+  const handleExportGraph = useCallback(() => {
+    const blob = new Blob([graphToJson(nodes, edges)], { type: "application/json" })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = GRAPH_EXPORT_FILE_NAME
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    setGraphMessage({ type: "success", text: "Graph exported." })
+  }, [edges, nodes])
+
+  const handleImportGraph = useCallback(() => {
+    importInputRef.current?.click()
+  }, [])
+
+  const handleImportFile = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ""
+      if (!file) return
+
+      const text = await file.text()
+      const validation = validateGraphJsonText(text)
+      if (!validation.ok) {
+        setGraphMessage({ type: "error", text: validation.error.message })
+        return
+      }
+
+      loadGraph(validation.graph, { type: "success", text: "Graph imported." })
+    },
+    [loadGraph]
+  )
 
   const onAddBlock = useCallback(
     (type: string) => {
@@ -171,6 +261,20 @@ export default function BlockEditor() {
     void loadWalletInfo()
   }, [loadWalletInfo])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const timer = window.setTimeout(() => {
+      try {
+        writeStoredGraph(window.localStorage, nodes, edges)
+      } catch {
+        setGraphMessage({ type: "error", text: "Graph could not be saved in this browser." })
+      }
+    }, 500)
+
+    return () => window.clearTimeout(timer)
+  }, [edges, nodes])
+
   return (
     <div className="relative h-full w-full bg-slate-50">
       <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur">
@@ -200,6 +304,17 @@ export default function BlockEditor() {
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         onAddBlock={onAddBlock}
+        onNewGraph={handleNewGraph}
+        onExportGraph={handleExportGraph}
+        onImportGraph={handleImportGraph}
+      />
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        onChange={(event) => void handleImportFile(event)}
+        className="hidden"
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
@@ -258,6 +373,21 @@ export default function BlockEditor() {
       {walletError && (
         <div className="absolute bottom-20 right-6 z-20 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow">
           {walletError}
+        </div>
+      )}
+
+      {graphMessage && (
+        <div
+          role={graphMessage.type === "error" ? "alert" : "status"}
+          className={`absolute bottom-20 left-4 z-20 max-w-sm rounded-lg border px-3 py-2 text-sm shadow ${
+            graphMessage.type === "error"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : graphMessage.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-slate-200 bg-white text-slate-700"
+          }`}
+        >
+          {graphMessage.text}
         </div>
       )}
     </div>

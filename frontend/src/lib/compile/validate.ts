@@ -23,7 +23,7 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
     return invalid("INVALID_NODE", `Node at index ${index} must be an object.`)
   }
 
-  const { id, type, data } = raw
+  const { id, type, data, position } = raw
 
   if (typeof id !== "string" || id.trim() === "") {
     return invalid("INVALID_NODE", `Node at index ${index} must have a non-empty string id.`)
@@ -45,6 +45,22 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
     return invalid("INVALID_NODE", `Node "${id}" must have data.label as a string.`)
   }
 
+  let parsedPosition: { x: number; y: number } | undefined
+
+  if (position !== undefined) {
+    if (
+      !isPlainObject(position) ||
+      typeof position.x !== "number" ||
+      typeof position.y !== "number" ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      return invalid("INVALID_NODE", `Node "${id}" has invalid position coordinates.`)
+    }
+
+    parsedPosition = { x: position.x, y: position.y }
+  }
+
   const params = data.params
   if (params !== undefined && !isPlainObject(params)) {
     return invalid("INVALID_NODE", `Node "${id}" has invalid data.params.`)
@@ -53,6 +69,7 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
   return {
     id,
     type,
+    ...(parsedPosition ? { position: parsedPosition } : {}),
     data: {
       label: data.label,
       ...(params !== undefined ? { params: params as ContractGraphNode["data"]["params"] } : {}),
@@ -88,10 +105,7 @@ function parseEdge(raw: unknown, index: number): ContractGraphEdge | CompileErro
   }
 }
 
-/**
- * Validates raw JSON input and returns a normalized ContractGraph or a structured error.
- */
-export function validateContractGraph(
+function parseGraphPayload(
   rawBody: unknown,
   byteLength?: number
 ): { ok: true; graph: ContractGraph } | { ok: false; error: CompileError } {
@@ -176,11 +190,19 @@ export function validateContractGraph(
   }
 
   const parsedEdges: ContractGraphEdge[] = []
+  const edgeIds = new Set<string>()
 
   for (let i = 0; i < edges.length; i++) {
     const result = parseEdge(edges[i], i)
     if ("code" in result) {
       return { ok: false, error: result }
+    }
+
+    if (edgeIds.has(result.id)) {
+      return {
+        ok: false,
+        error: invalid("DUPLICATE_EDGE_ID", `Duplicate edge id "${result.id}".`),
+      }
     }
 
     if (!nodeIds.has(result.source)) {
@@ -203,10 +225,17 @@ export function validateContractGraph(
       }
     }
 
+    edgeIds.add(result.id)
     parsedEdges.push(result)
   }
 
-  const startNodes = parsedNodes.filter((n) => n.type === "default")
+  return { ok: true, graph: { nodes: parsedNodes, edges: parsedEdges } }
+}
+
+function validateSingleStartNode(graph: ContractGraph):
+  | { ok: true }
+  | { ok: false; error: CompileError } {
+  const startNodes = graph.nodes.filter((n) => n.type === "default")
   if (startNodes.length === 0) {
     return {
       ok: false,
@@ -227,14 +256,41 @@ export function validateContractGraph(
     }
   }
 
-  const graph: ContractGraph = { nodes: parsedNodes, edges: parsedEdges }
+  return { ok: true }
+}
 
-  const structureError = validateGraphStructure(graph)
+/**
+ * Validates raw JSON input and returns a normalized ContractGraph or a structured error.
+ */
+export function validateContractGraph(
+  rawBody: unknown,
+  byteLength?: number
+): { ok: true; graph: ContractGraph } | { ok: false; error: CompileError } {
+  const parsed = parseGraphPayload(rawBody, byteLength)
+  if (!parsed.ok) return parsed
+
+  const startValidation = validateSingleStartNode(parsed.graph)
+  if (!startValidation.ok) return startValidation
+
+  const structureError = validateGraphStructure(parsed.graph)
   if (structureError) {
     return { ok: false, error: structureError }
   }
 
-  return { ok: true, graph }
+  return parsed
+}
+
+export function validateStoredContractGraph(
+  rawBody: unknown,
+  byteLength?: number
+): { ok: true; graph: ContractGraph } | { ok: false; error: CompileError } {
+  const parsed = parseGraphPayload(rawBody, byteLength)
+  if (!parsed.ok) return parsed
+
+  const startValidation = validateSingleStartNode(parsed.graph)
+  if (!startValidation.ok) return startValidation
+
+  return parsed
 }
 
 /**
