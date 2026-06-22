@@ -9,6 +9,7 @@ import ReactFlow, {
   useNodesState,
   type Connection,
   type ReactFlowInstance,
+  type NodeMouseHandler,
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { useCallback, useEffect, useState } from "react"
@@ -18,6 +19,7 @@ import DeployButton from "./DeployButton"
 import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
+import ConfigPanel from "./ConfigPanel"
 import TemplatesModal from "./TemplatesModal"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -45,6 +47,7 @@ const initialNodes = [
 export default function BlockEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
@@ -157,7 +160,26 @@ export default function BlockEditor() {
     }
   }, [])
 
+  const handleNodeClick = useCallback<NodeMouseHandler>(
+    (_event, node) => {
+      setSelectedNodeId(node.id)
+    },
+    []
+  )
+
+  const updateNodeData = useCallback(
+    (nodeId: string, data: { label: string; params?: unknown }) => {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => (node.id === nodeId ? { ...node, data } : node))
+      )
+      setTestResults(null)
+      setOverrideTestFailure(false)
+    },
+    [setNodes]
+  )
+
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
+  const selectedNode = selectedNodeId ? nodes.find((node) => node.id === selectedNodeId) ?? null : null
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -211,6 +233,8 @@ export default function BlockEditor() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={handleNodeClick}
+          onPaneClick={() => setSelectedNodeId(null)}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
           fitView
@@ -249,6 +273,11 @@ export default function BlockEditor() {
       </div>
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
+      <ConfigPanel
+        selectedNode={selectedNode}
+        onClose={() => setSelectedNodeId(null)}
+        onUpdateNode={updateNodeData}
+      />
       <TemplatesModal
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}
