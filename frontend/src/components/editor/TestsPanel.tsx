@@ -11,6 +11,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react"
+import { useToast } from "@/components/toast/ToastProvider"
 import type { Edge, Node } from "reactflow"
 import {
   createDefaultTestCase,
@@ -36,6 +37,7 @@ function createEmptyCase(graph: { nodes: Node[]; edges: Edge[] }): ContractTestC
 }
 
 export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
+  const toast = useToast()
   const [isOpen, setIsOpen] = useState(true)
   const [testCases, setTestCases] = useState<ContractTestCase[]>(() => [
     createDefaultTestCase({ nodes, edges }),
@@ -63,10 +65,24 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
       const runResult = await runContractTestSuite({ graph: { nodes, edges }, testCases })
       setResult(runResult)
       setStatus("done")
+      if (runResult.allPassed) {
+        toast.success({
+          title: "Contract tests passed",
+          description: `${runResult.cases.length} test case${runResult.cases.length === 1 ? "" : "s"} passed.`,
+        })
+      } else {
+        const failedCount = runResult.cases.filter((caseResult) => !caseResult.passed).length
+        toast.error({
+          title: "Contract tests failed",
+          description: `${failedCount} of ${runResult.cases.length} test case${runResult.cases.length === 1 ? "" : "s"} failed.`,
+        })
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to run contract tests.")
+      const description = err instanceof Error ? err.message : "Failed to run contract tests."
+      setError(description)
       setStatus("done")
       onResultsChange(null)
+      toast.error({ title: "Unable to run tests", description })
     }
   }
 

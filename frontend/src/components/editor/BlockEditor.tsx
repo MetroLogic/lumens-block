@@ -20,6 +20,7 @@ import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
+import { useToast } from "@/components/toast/ToastProvider"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
 import type { Edge, Node } from "reactflow"
@@ -43,6 +44,7 @@ const initialNodes = [
 ]
 
 export default function BlockEditor() {
+  const toast = useToast()
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -100,14 +102,17 @@ export default function BlockEditor() {
       const balance = await fetchWalletBalance(address, selectedNetwork)
       setWalletAddress(address)
       setWalletBalance(balance)
+      toast.success({ title: "Wallet connected", description: `Balance loaded for ${selectedNetwork}.` })
     } catch (error) {
+      const description = error instanceof Error ? error.message : "Unable to load wallet info"
       setWalletAddress(null)
       setWalletBalance("—")
-      setWalletError(error instanceof Error ? error.message : "Unable to load wallet info")
+      setWalletError(description)
+      toast.error({ title: "Wallet connection failed", description })
     } finally {
       setIsWalletLoading(false)
     }
-  }, [selectedNetwork])
+  }, [selectedNetwork, toast])
 
   const handleLoadTemplate = (graph: ContractGraph) => {
     const isNonEmpty =
@@ -127,6 +132,7 @@ export default function BlockEditor() {
     setIsTemplatesOpen(false)
     setTestResults(null)
     setOverrideTestFailure(false)
+    toast.success({ title: "Template loaded", description: "The canvas was updated with the selected template." })
   }
 
   const onAddBlock = useCallback(

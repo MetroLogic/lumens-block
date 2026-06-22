@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
 import { CompileContractError, deployContract, estimateDeploymentFee, type StellarNetwork } from "@/lib/stellar/deploy"
+import { useToast } from "@/components/toast/ToastProvider"
 
 interface Props {
   nodes: Node[]
@@ -21,6 +22,7 @@ export default function DeployButton({
   walletAddress,
   walletBalance,
 }: Props) {
+  const toast = useToast()
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
   const [message, setMessage] = useState<string | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
@@ -43,11 +45,13 @@ export default function DeployButton({
       setEstimatedFee(fee)
     } catch (error) {
       setEstimatedFee(null)
-      setEstimateError(error instanceof Error ? error.message : "Unable to estimate fee")
+      const description = error instanceof Error ? error.message : "Unable to estimate fee"
+      setEstimateError(description)
+      toast.error({ title: "Unable to estimate fee", description })
     } finally {
       setIsEstimating(false)
     }
-  }, [edges, nodes, selectedNetwork, walletAddress])
+  }, [edges, nodes, selectedNetwork, toast, walletAddress])
 
   useEffect(() => {
     if (!isConfirmOpen) return
@@ -74,6 +78,7 @@ export default function DeployButton({
   const handleDeploy = async () => {
     if (!walletAddress) {
       setMessage("Connect your wallet before deploying.")
+      toast.info({ title: "Connect your wallet", description: "A wallet connection is required before deployment." })
       return
     }
 
@@ -84,16 +89,18 @@ export default function DeployButton({
       const result = await deployContract({ nodes, edges }, selectedNetwork)
       setStatus("success")
       setMessage(result)
+      toast.success({ title: "Deployment prepared", description: result })
       setIsConfirmOpen(false)
     } catch (err) {
       setStatus("error")
+      let description = "Deployment failed. Please try again."
       if (err instanceof CompileContractError) {
-        setMessage(err.message)
+        description = err.message
       } else if (err instanceof Error) {
-        setMessage(err.message)
-      } else {
-        setMessage("Deployment failed. Please try again.")
+        description = err.message
       }
+      setMessage(description)
+      toast.error({ title: "Deployment failed", description })
     }
   }
 
