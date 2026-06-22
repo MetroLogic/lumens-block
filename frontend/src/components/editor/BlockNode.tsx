@@ -2,8 +2,19 @@
 
 import React from "react"
 import { Handle, Position } from "reactflow"
+import {
+  formatConditionExpression,
+  parseConditionExpression,
+  validateConditionExpression,
+} from "@/lib/compile/conditionExpression"
 
-export default function BlockNode({ type, data }: { type: string; data: { label: string } }) {
+export default function BlockNode({
+  type,
+  data,
+}: {
+  type: string
+  data: { label: string; params?: { expression?: unknown; condition?: string } }
+}) {
   let colorClasses = "bg-white border-gray-300 text-gray-800"
   let badgeColor = "bg-gray-100 text-gray-600"
   
@@ -34,6 +45,11 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
       break
   }
 
+  const conditionExpression = type === "Condition" ? parseConditionExpression(data.params?.expression) : null
+  const conditionValidation = conditionExpression ? validateConditionExpression(conditionExpression) : null
+  const conditionSummary =
+    conditionExpression ? formatConditionExpression(conditionExpression) : data.params?.condition
+
   return (
     <div className={`relative px-4 py-3 rounded-xl border-2 shadow-sm font-sans min-w-[150px] text-center ${colorClasses}`}>
       {/* Target handle on top */}
@@ -48,6 +64,18 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
           {type === "default" ? "Start" : type}
         </span>
         <div className="text-sm font-semibold mt-1">{data.label}</div>
+        {conditionSummary && (
+          <div
+            className={`mt-1 max-w-[180px] truncate rounded px-2 py-0.5 text-[10px] font-medium ${
+              conditionValidation && !conditionValidation.ok
+                ? "bg-red-100 text-red-700"
+                : "bg-white/70 text-gray-600"
+            }`}
+            title={conditionSummary}
+          >
+            {conditionSummary}
+          </div>
+        )}
       </div>
 
       {/* Source handle on bottom */}

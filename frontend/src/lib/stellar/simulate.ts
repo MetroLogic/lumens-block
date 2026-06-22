@@ -1,5 +1,6 @@
 import type { Edge, Node } from "reactflow"
 
+import { getFunctionParamsFromGraph, paramRustTypeToInputType } from "@/lib/compile/codegen"
 import { normalizeReactFlowGraph } from "@/lib/compile/validate"
 
 export interface SimulateArg {
@@ -79,27 +80,11 @@ export function inferArgsFromGraph(graph: { nodes: Node[]; edges: Edge[] }): Sim
     }
   }
 
-  for (const node of normalized.nodes) {
-    switch (node.type) {
-      case "Transfer":
-        add("from", "address")
-        add("to", "address")
-        add("amount", "number")
-        break
-      case "Auth":
-        add("caller", "address")
-        break
-      case "Storage":
-        add("key", "string")
-        add("value", "string")
-        break
-      case "Condition":
-        add("condition_input", "string")
-        break
-      case "Event":
-        add("event_data", "string")
-        break
-    }
+  for (const param of getFunctionParamsFromGraph(normalized)) {
+    if (param.name === "env") continue
+
+    const inputType = paramRustTypeToInputType(param.rustType)
+    add(param.name, inputType === "symbol" ? "string" : inputType)
   }
 
   // Always include a generic invoker if nothing was inferred

@@ -14,6 +14,29 @@ export const BLOCK_TYPES = [
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
+export const CONDITION_OPERATORS = ["==", "!=", ">", "<", ">=", "<="] as const
+export const CONDITION_OPERAND_KINDS = ["argument", "storage", "constant"] as const
+export const CONDITION_VALUE_TYPES = ["number", "string", "boolean"] as const
+
+export type ConditionOperator = (typeof CONDITION_OPERATORS)[number]
+export type ConditionOperandKind = (typeof CONDITION_OPERAND_KINDS)[number]
+export type ConditionValueType = (typeof CONDITION_VALUE_TYPES)[number]
+
+export interface ConditionOperand {
+  kind: ConditionOperandKind
+  valueType: ConditionValueType
+  /** Invocation argument name or contract storage key, depending on kind. */
+  name?: string
+  /** Constant literal value, depending on valueType. */
+  value?: string
+}
+
+export interface ConditionExpression {
+  left: ConditionOperand
+  operator: ConditionOperator
+  right: ConditionOperand
+}
+
 export interface BlockParameters {
   /** Token contract address for Transfer blocks */
   token?: string
@@ -23,6 +46,8 @@ export interface BlockParameters {
   eventName?: string
   /** Condition expression label for Condition blocks */
   condition?: string
+  /** Structured expression builder payload for Condition blocks */
+  expression?: ConditionExpression
 }
 
 export interface ContractGraphNode {

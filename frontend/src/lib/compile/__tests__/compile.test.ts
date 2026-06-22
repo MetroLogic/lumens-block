@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { generateContractSource, getExecutionOrder } from "@/lib/compile/codegen"
+import { generateContractSource, getExecutionOrder, getFunctionParamsFromGraph } from "@/lib/compile/codegen"
 import type { ContractGraph } from "@/lib/compile/schema"
 import { validateContractGraph, validateGraphStructure } from "@/lib/compile/validate"
 import tokenTransfer from "@/lib/templates/token-transfer.json"
@@ -111,5 +111,64 @@ describe("generateContractSource", () => {
     const { source } = generateContractSource(graph)
     expect(source).toContain("if !release")
     expect(source).toContain("token::Client::new(&env, &token).transfer")
+  })
+
+  it("generates structured Condition expressions from node params", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "1", type: "default", data: { label: "Start" } },
+        {
+          id: "2",
+          type: "Condition",
+          data: {
+            label: "Check amount",
+            params: {
+              expression: {
+                left: { kind: "argument", valueType: "number", name: "amount" },
+                operator: ">=",
+                right: { kind: "constant", valueType: "number", value: "100" },
+              },
+            },
+          },
+        },
+      ],
+      edges: [{ id: "e1", source: "1", target: "2" }],
+    }
+
+    const params = getFunctionParamsFromGraph(graph)
+    const { source } = generateContractSource(graph)
+
+    expect(params).toContainEqual({ name: "amount", rustType: "i128" })
+    expect(params).not.toContainEqual({ name: "release", rustType: "bool" })
+    expect(source).toContain("amount >= 100i128")
+  })
+
+  it("rejects invalid structured Condition expressions", () => {
+    const result = validateContractGraph({
+      nodes: [
+        { id: "1", type: "default", data: { label: "Start" } },
+        {
+          id: "2",
+          type: "Condition",
+          data: {
+            label: "Bad condition",
+            params: {
+              expression: {
+                left: { kind: "argument", valueType: "number", name: "amount" },
+                operator: ">",
+                right: { kind: "constant", valueType: "string", value: "owner" },
+              },
+            },
+          },
+        },
+      ],
+      edges: [{ id: "e1", source: "1", target: "2" }],
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_CONDITION_EXPRESSION")
+      expect(result.error.details).toContain("Both operands must use the same value type.")
+    }
   })
 })

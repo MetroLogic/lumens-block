@@ -9,6 +9,10 @@ import {
   MAX_NODES,
   isBlockType,
 } from "./schema"
+import {
+  parseConditionExpression,
+  validateConditionExpression,
+} from "./conditionExpression"
 
 function invalid(code: string, message: string, details?: string[]): CompileError {
   return { code, message, details }
@@ -48,6 +52,25 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
   const params = data.params
   if (params !== undefined && !isPlainObject(params)) {
     return invalid("INVALID_NODE", `Node "${id}" has invalid data.params.`)
+  }
+
+  if (type === "Condition" && isPlainObject(params) && params.expression !== undefined) {
+    const expression = parseConditionExpression(params.expression)
+    if (!expression) {
+      return invalid(
+        "INVALID_CONDITION_EXPRESSION",
+        `Condition node "${id}" has an incomplete expression.`
+      )
+    }
+
+    const validation = validateConditionExpression(expression)
+    if (!validation.ok) {
+      return invalid(
+        "INVALID_CONDITION_EXPRESSION",
+        `Condition node "${id}" has an invalid expression.`,
+        validation.details
+      )
+    }
   }
 
   return {

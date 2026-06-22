@@ -19,10 +19,23 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import ConditionExpressionPanel from "./ConditionExpressionPanel"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
+import {
+  createDefaultConditionExpression,
+  formatConditionExpression,
+} from "@/lib/compile/conditionExpression"
+import type { BlockParameters, ConditionExpression } from "@/lib/compile/schema"
 import type { Edge, Node } from "reactflow"
+
+type EditorNodeData = {
+  label: string
+  params?: BlockParameters
+}
+
+type EditorNode = Node<EditorNodeData>
 
 const nodeTypes = {
   Condition: BlockNode,
@@ -33,7 +46,7 @@ const nodeTypes = {
   default: BlockNode,
 }
 
-const initialNodes = [
+const initialNodes: EditorNode[] = [
   {
     id: "1",
     type: "default",
@@ -41,6 +54,21 @@ const initialNodes = [
     data: { label: "Start" },
   },
 ]
+
+function createNodeData(type: string): EditorNodeData {
+  if (type === "Condition") {
+    const expression = createDefaultConditionExpression()
+    return {
+      label: type,
+      params: {
+        expression,
+        condition: formatConditionExpression(expression),
+      },
+    }
+  }
+
+  return { label: type }
+}
 
 export default function BlockEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -55,6 +83,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const [selectedConditionNodeId, setSelectedConditionNodeId] = useState<string | null>(null)
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -83,10 +112,11 @@ export default function BlockEditor() {
         id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
         position,
-        data: { label: type },
+        data: createNodeData(type),
       }
 
       setNodes((nds) => nds.concat(newNode))
+      setSelectedConditionNodeId(type === "Condition" ? newNode.id : null)
     },
     [reactFlowInstance, setNodes]
   )
@@ -127,6 +157,7 @@ export default function BlockEditor() {
     setIsTemplatesOpen(false)
     setTestResults(null)
     setOverrideTestFailure(false)
+    setSelectedConditionNodeId(null)
   }
 
   const onAddBlock = useCallback(
@@ -142,10 +173,11 @@ export default function BlockEditor() {
         id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
         position,
-        data: { label: type },
+        data: createNodeData(type),
       }
 
       setNodes((nds) => nds.concat(newNode))
+      setSelectedConditionNodeId(type === "Condition" ? newNode.id : null)
     },
     [reactFlowInstance, setNodes]
   )
@@ -158,6 +190,39 @@ export default function BlockEditor() {
   }, [])
 
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
+  const selectedConditionNode =
+    nodes.find((node) => node.id === selectedConditionNodeId && node.type === "Condition") ?? null
+
+  const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedConditionNodeId(node.type === "Condition" ? node.id : null)
+  }, [])
+
+  const handleConditionExpressionChange = useCallback(
+    (expression: ConditionExpression) => {
+      if (!selectedConditionNodeId) return
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          if (node.id !== selectedConditionNodeId) return node
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              params: {
+                ...(node.data?.params ?? {}),
+                expression,
+                condition: formatConditionExpression(expression),
+              },
+            },
+          }
+        })
+      )
+      setTestResults(null)
+      setOverrideTestFailure(false)
+    },
+    [selectedConditionNodeId, setNodes]
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -212,6 +277,8 @@ export default function BlockEditor() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onInit={setReactFlowInstance}
+          onNodeClick={handleNodeClick}
+          onPaneClick={() => setSelectedConditionNodeId(null)}
           nodeTypes={nodeTypes}
           fitView
         >
@@ -254,6 +321,14 @@ export default function BlockEditor() {
         onClose={() => setIsTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
       />
+
+      {selectedConditionNode && (
+        <ConditionExpressionPanel
+          node={selectedConditionNode}
+          onChange={handleConditionExpressionChange}
+          onClose={() => setSelectedConditionNodeId(null)}
+        />
+      )}
 
       {walletError && (
         <div className="absolute bottom-20 right-6 z-20 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow">

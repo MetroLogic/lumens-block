@@ -50,11 +50,42 @@
                 "token": { "type": "string" },
                 "storageKey": { "type": "string" },
                 "eventName": { "type": "string" },
-                "condition": { "type": "string" }
+                "condition": { "type": "string" },
+                "expression": { "$ref": "#/definitions/conditionExpression" }
               }
             }
           }
         }
+      }
+    },
+    "conditionExpression": {
+      "type": "object",
+      "required": ["left", "operator", "right"],
+      "additionalProperties": false,
+      "properties": {
+        "left": { "$ref": "#/definitions/conditionOperand" },
+        "operator": {
+          "type": "string",
+          "enum": ["==", "!=", ">", "<", ">=", "<="]
+        },
+        "right": { "$ref": "#/definitions/conditionOperand" }
+      }
+    },
+    "conditionOperand": {
+      "type": "object",
+      "required": ["kind", "valueType"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["argument", "storage", "constant"]
+        },
+        "valueType": {
+          "type": "string",
+          "enum": ["number", "string", "boolean"]
+        },
+        "name": { "type": "string" },
+        "value": { "type": "string" }
       }
     },
     "edge": {

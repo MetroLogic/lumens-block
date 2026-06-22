@@ -1,4 +1,10 @@
 import { BlockType, ContractGraph, ContractGraphNode } from "./schema"
+import {
+  getConditionInvocationArguments,
+  parseConditionExpression,
+  validateConditionExpression,
+} from "./conditionExpression"
+import type { ConditionExpression, ConditionOperand, ConditionValueType } from "./schema"
 import { validateGraphStructure } from "./validate"
 
 export interface CodegenResult {
@@ -63,7 +69,7 @@ export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
 export function getFunctionParamsFromGraph(graph: ContractGraph): FunctionParam[] {
   const executionOrder = getExecutionOrder(graph)
   const blockTypes = new Set(executionOrder.map((n) => n.type))
-  return deriveParams(blockTypes)
+  return deriveParams(blockTypes, executionOrder)
 }
 
 export function paramRustTypeToInputType(rustType: string): "address" | "number" | "boolean" | "symbol" {
@@ -81,34 +87,73 @@ export function paramRustTypeToInputType(rustType: string): "address" | "number"
   }
 }
 
-function deriveParams(blockTypes: Set<BlockType>): FunctionParam[] {
+function conditionValueTypeToRustType(valueType: ConditionValueType): FunctionParam["rustType"] {
+  switch (valueType) {
+    case "number":
+      return "i128"
+    case "boolean":
+      return "bool"
+    case "string":
+    default:
+      return "Symbol"
+  }
+}
+
+function deriveParams(
+  blockTypes: Set<BlockType>,
+  executionOrder: ContractGraphNode[] = []
+): FunctionParam[] {
   const params: FunctionParam[] = [{ name: "env", rustType: "Env" }]
+  const paramNames = new Set(params.map((param) => param.name))
+
+  const addParam = (param: FunctionParam) => {
+    if (paramNames.has(param.name)) return
+    paramNames.add(param.name)
+    params.push(param)
+  }
 
   if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
-    params.push({ name: "caller", rustType: "Address" })
+    addParam({ name: "caller", rustType: "Address" })
   }
 
   if (blockTypes.has("Transfer") || blockTypes.has("Event")) {
-    params.push({ name: "from", rustType: "Address" })
-    params.push({ name: "to", rustType: "Address" })
-    params.push({ name: "amount", rustType: "i128" })
+    addParam({ name: "from", rustType: "Address" })
+    addParam({ name: "to", rustType: "Address" })
+    addParam({ name: "amount", rustType: "i128" })
   }
 
   if (blockTypes.has("Transfer")) {
-    params.push({ name: "token", rustType: "Address" })
+    addParam({ name: "token", rustType: "Address" })
   }
 
   if (blockTypes.has("Storage")) {
-    params.push({ name: "key", rustType: "Symbol" })
-    params.push({ name: "value", rustType: "i128" })
+    addParam({ name: "key", rustType: "Symbol" })
+    addParam({ name: "value", rustType: "i128" })
   }
 
   if (blockTypes.has("Condition")) {
-    params.push({ name: "release", rustType: "bool" })
+    const conditionNodes = executionOrder.filter((node) => node.type === "Condition")
+    let needsReleaseFallback = false
+
+    for (const node of conditionNodes) {
+      const expression = parseConditionExpression(node.data.params?.expression)
+      if (!expression || !validateConditionExpression(expression).ok) {
+        needsReleaseFallback = true
+        continue
+      }
+
+      for (const arg of getConditionInvocationArguments(expression)) {
+        addParam({ name: arg.name, rustType: conditionValueTypeToRustType(arg.valueType) })
+      }
+    }
+
+    if (needsReleaseFallback) {
+      addParam({ name: "release", rustType: "bool" })
+    }
   }
 
   if (blockTypes.has("Event")) {
-    params.push({ name: "event_name", rustType: "Symbol" })
+    addParam({ name: "event_name", rustType: "Symbol" })
   }
 
   return params
@@ -156,10 +201,68 @@ function emitBlock(node: ContractGraphNode): string {
       return `        // ${label}\n        env.events().publish((event_name,), (from.clone(), to.clone(), amount));`
 
     case "Condition":
-      return `        // ${label}\n        if !release {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+      return emitConditionBlock(label, node.data.params?.expression)
 
     default:
       return ""
+  }
+}
+
+function emitConditionBlock(label: string, rawExpression: unknown): string {
+  const expression = parseConditionExpression(rawExpression)
+
+  if (!expression || !validateConditionExpression(expression).ok) {
+    return `        // ${label}\n        if !release {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+  }
+
+  const condition = emitConditionExpression(expression)
+  return `        // ${label}\n        if !(${condition}) {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+}
+
+function emitConditionExpression(expression: ConditionExpression): string {
+  const left = emitOperandExpression(expression.left)
+  const right = emitOperandExpression(expression.right)
+  return `${left} ${expression.operator} ${right}`
+}
+
+function emitOperandExpression(operand: ConditionOperand): string {
+  if (operand.kind === "argument") {
+    return operand.name?.trim() || "release"
+  }
+
+  if (operand.kind === "storage") {
+    const key = sanitizeSymbol(operand.name ?? "stored")
+    const fallback = conditionFallbackExpression(operand.valueType)
+    const rustType = conditionValueTypeToRustType(operand.valueType)
+    return `env.storage().instance().get::<Symbol, ${rustType}>(&symbol_short!("${key}")).unwrap_or(${fallback})`
+  }
+
+  return conditionConstantExpression(operand.valueType, operand.value ?? "")
+}
+
+function conditionFallbackExpression(valueType: ConditionValueType): string {
+  switch (valueType) {
+    case "number":
+      return "0i128"
+    case "boolean":
+      return "false"
+    case "string":
+    default:
+      return 'symbol_short!("unset")'
+  }
+}
+
+function conditionConstantExpression(valueType: ConditionValueType, value: string): string {
+  const trimmed = value.trim()
+
+  switch (valueType) {
+    case "number":
+      return `${trimmed || "0"}i128`
+    case "boolean":
+      return trimmed === "true" ? "true" : "false"
+    case "string":
+    default:
+      return `symbol_short!("${sanitizeSymbol(trimmed || "value")}")`
   }
 }
 
@@ -190,7 +293,7 @@ export function generateContractSource(graph: ContractGraph): CodegenResult {
   const blockTypes = new Set(executionOrder.map((n) => n.type))
 
   const imports = deriveImports(blockTypes)
-  const params = deriveParams(blockTypes)
+  const params = deriveParams(blockTypes, executionOrder)
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
   const body = executionOrder.map(emitBlock).filter(Boolean).join("\n\n")
 
