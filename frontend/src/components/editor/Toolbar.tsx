@@ -9,9 +9,10 @@ interface Props {
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
   onAddBlock?: (type: string) => void
+  onAutoLayout?: () => void
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }: Props) {
+export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock, onAutoLayout }: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
@@ -64,8 +65,16 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
         </div>
       ))}
 
-      {onOpenTemplates && (
-        <div className="mt-2 border-t border-slate-100 pt-2">
+      <div className="mt-2 border-t border-slate-100 pt-2 flex flex-col gap-2">
+        {onAutoLayout && (
+          <button
+            onClick={onAutoLayout}
+            className="w-full rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Auto Layout
+          </button>
+        )}
+        {onOpenTemplates && (
           <button
             onClick={onOpenTemplates}
             className="flex w-full items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
@@ -73,8 +82,8 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock }
             <FolderOpen size={14} />
             Templates
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

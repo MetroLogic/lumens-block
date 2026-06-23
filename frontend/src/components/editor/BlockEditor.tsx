@@ -12,6 +12,7 @@ import ReactFlow, {
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { useCallback, useEffect, useState } from "react"
+import { applyAutoLayout } from "@/lib/layout"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
@@ -157,6 +158,26 @@ export default function BlockEditor() {
     }
   }, [])
 
+  const handleAutoLayout = useCallback(() => {
+    setNodes((nds) =>
+      applyAutoLayout(nds, edges).map((node) => ({
+        ...node,
+        style: { ...node.style, transition: "all 0.3s ease" },
+      }))
+    )
+    setTimeout(() => {
+      setNodes((nds) =>
+        nds.map((node) => {
+          const { transition, ...restStyle } = node.style || {}
+          return {
+            ...node,
+            style: Object.keys(restStyle).length ? restStyle : undefined,
+          }
+        })
+      )
+    }, 300)
+  }, [edges, setNodes])
+
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
   useEffect(() => {
@@ -200,6 +221,7 @@ export default function BlockEditor() {
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         onAddBlock={onAddBlock}
+        onAutoLayout={handleAutoLayout}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
