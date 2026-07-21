@@ -1,4 +1,4 @@
-import { BlockType, ContractGraph, ContractGraphNode } from "./schema"
+import { BlockType, ContractGraph, ContractGraphNode, ConditionExpression, Operand } from "./schema"
 import { validateGraphStructure } from "./validate"
 
 export interface CodegenResult {
@@ -155,8 +155,15 @@ function emitBlock(node: ContractGraphNode): string {
     case "Event":
       return `        // ${label}\n        env.events().publish((event_name,), (from.clone(), to.clone(), amount));`
 
-    case "Condition":
+    case "Condition": {
+      const expr = node.data.params?.conditionExpression
+      if (expr) {
+        const rustCondition = buildRustCondition(expr)
+        return `        // ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+      }
+      // Legacy fallback (no expression defined yet)
       return `        // ${label}\n        if !release {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+    }
 
     default:
       return ""
@@ -166,6 +173,43 @@ function emitBlock(node: ContractGraphNode): string {
 function sanitizeSymbol(value: string): string {
   const cleaned = value.replace(/[^a-zA-Z0-9_]/g, "_").slice(0, 9)
   return cleaned.length > 0 ? cleaned : "key"
+}
+
+/**
+ * Converts a single Operand into its Rust expression representation.
+ *
+ * - invocationArg  → bare identifier (e.g. `amount`)
+ * - storageKey     → env.storage().instance().get::<_, i128>(&symbol_short!("key")).unwrap_or(0)
+ * - constant       → typed literal (string → Symbol, number → i128, bool → bool)
+ */
+function buildRustOperand(op: Operand): string {
+  switch (op.type) {
+    case "invocationArg":
+      return op.value.trim() || "release"
+    case "storageKey": {
+      const sym = sanitizeSymbol(op.value || "key")
+      return `env.storage().instance().get::<_, i128>(&symbol_short!("${sym}")).unwrap_or(0)`
+    }
+    case "constant": {
+      const kind = op.constantKind ?? "string"
+      if (kind === "number") return op.value.trim() || "0"
+      if (kind === "bool") return op.value === "true" ? "true" : "false"
+      // String constant → convert to Symbol for comparison
+      return `symbol_short!("${op.value.replace(/"/g, '\\"')}")`
+    }
+    default:
+      return op.value || "release"
+  }
+}
+
+/**
+ * Converts a ConditionExpression into a Rust boolean expression string.
+ * The caller wraps it in `if !(…) { panic_with_error!(…) }`.
+ */
+function buildRustCondition(expr: ConditionExpression): string {
+  const left = buildRustOperand(expr.left)
+  const right = buildRustOperand(expr.right)
+  return `${left} ${expr.operator} ${right}`
 }
 
 function fnv1aHash(input: string): string {

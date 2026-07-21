@@ -3,6 +3,45 @@
  * Captures node types, parameters, and edges independent of React Flow runtime types.
  */
 
+// ---------------------------------------------------------------------------
+// Condition expression model
+// ---------------------------------------------------------------------------
+
+/** The kind of value that can appear on either side of a condition. */
+export type OperandType = "constant" | "storageKey" | "invocationArg"
+
+/** A single operand in a condition expression. */
+export interface Operand {
+  /** Discriminator: how the value is sourced. */
+  type: OperandType
+  /**
+   * For "constant"   → the literal value (string | number | boolean).
+   * For "storageKey" → the storage key name string.
+   * For "invocationArg" → the argument name string (e.g. "amount", "caller").
+   */
+  value: string
+  /**
+   * For "constant" only: the Rust primitive type of the literal.
+   * Defaults to "string" if omitted.
+   */
+  constantKind?: "string" | "number" | "bool"
+}
+
+/** Comparison operators supported by the expression builder. */
+export type Operator = "==" | "!=" | ">" | "<" | ">=" | "<="
+
+export const OPERATORS: Operator[] = ["==", "!=", ">", "<", ">=", "<="]
+
+/**
+ * Structured condition expression.
+ * Serialised into node data and consumed by codegen to produce a Rust `if` guard.
+ */
+export interface ConditionExpression {
+  left: Operand
+  operator: Operator
+  right: Operand
+}
+
 export const BLOCK_TYPES = [
   "default",
   "Condition",
@@ -21,8 +60,13 @@ export interface BlockParameters {
   storageKey?: string
   /** Event name for Event blocks */
   eventName?: string
-  /** Condition expression label for Condition blocks */
+  /** Condition expression label for Condition blocks (legacy free-text, kept for backward compat) */
   condition?: string
+  /**
+   * Structured condition expression for Condition blocks.
+   * Takes precedence over the legacy `condition` string during codegen.
+   */
+  conditionExpression?: ConditionExpression
 }
 
 export interface ContractGraphNode {
