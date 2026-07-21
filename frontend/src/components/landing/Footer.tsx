@@ -7,7 +7,7 @@ export default function Footer() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <footer className="border-t border-slate-900 bg-slate-950/40 py-12 backdrop-blur-sm">
+    <footer className="border-t border-slate-200 bg-slate-50/60 dark:border-slate-900 dark:bg-slate-950/40 py-12 backdrop-blur-sm transition-colors">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           
@@ -30,8 +30,8 @@ export default function Footer() {
                 </svg>
                 <div className="absolute -inset-0.5 -z-10 rounded-lg bg-gradient-to-tr from-blue-500 to-purple-600 opacity-30 blur-sm"></div>
               </div>
-              <span className="text-base font-bold bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-                Lumens<span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Block</span>
+              <span className="text-base font-bold bg-gradient-to-r from-slate-900 via-slate-700 to-slate-800 dark:from-white dark:via-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+                Lumens<span className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Block</span>
               </span>
             </div>
             <p className="text-2xs text-slate-500">
@@ -40,9 +40,9 @@ export default function Footer() {
           </div>
 
           {/* Credits */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
             <span>Built by</span>
-            <span className="font-semibold text-slate-200 hover:text-blue-400 transition-colors">
+            <span className="font-semibold text-slate-800 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
               Metro Logic
             </span>
             <span>for the Stellar Ecosystem</span>
@@ -55,7 +55,7 @@ export default function Footer() {
               href="https://github.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-slate-500 hover:text-white transition-colors"
+              className="text-slate-400 hover:text-slate-900 dark:text-slate-500 dark:hover:text-white transition-colors"
               aria-label="GitHub Repository"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
@@ -66,7 +66,7 @@ export default function Footer() {
               href="https://stellar.org"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-slate-500 hover:text-white transition-colors"
+              className="text-slate-400 hover:text-slate-900 dark:text-slate-500 dark:hover:text-white transition-colors"
               aria-label="Stellar Website"
             >
               <Globe className="h-5 w-5" />

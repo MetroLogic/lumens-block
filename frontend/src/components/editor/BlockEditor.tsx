@@ -20,6 +20,7 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -44,6 +45,7 @@ const initialNodes = [
 ]
 
 export default function BlockEditor() {
+  const { theme } = useTheme()
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -193,12 +195,12 @@ export default function BlockEditor() {
   }, [loadWalletInfo])
 
   return (
-    <div className="relative h-full w-full bg-slate-50">
-      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur">
+    <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
         <select
           value={selectedNetwork}
           onChange={(event) => setSelectedNetwork(event.target.value as StellarNetwork)}
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
+          className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
         >
           <option value="testnet">Testnet</option>
           <option value="mainnet">Mainnet</option>
@@ -206,12 +208,12 @@ export default function BlockEditor() {
         <button
           onClick={() => void loadWalletInfo()}
           disabled={isWalletLoading}
-          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900"
         >
           {isWalletLoading ? "Checking..." : walletAddress ? "Refresh" : "Connect"}
         </button>
         {walletAddress && (
-          <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+          <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
             {walletBalance} XLM
           </span>
         )}
@@ -237,9 +239,9 @@ export default function BlockEditor() {
           nodeTypes={nodeTypes}
           fitView
         >
-          <Background />
-          <Controls />
-          <MiniMap />
+          <Background color={theme === "dark" ? "#475569" : "#94a3b8"} />
+          <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-200" />
+          <MiniMap className="dark:bg-slate-800 dark:border-slate-700" maskColor={theme === "dark" ? "rgba(15, 23, 42, 0.7)" : "rgba(240, 242, 245, 0.7)"} />
         </ReactFlow>
       </div>
 

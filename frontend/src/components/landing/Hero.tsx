@@ -13,21 +13,21 @@ export default function Hero() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col items-center text-center">
           {/* Badge */}
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/5 px-3 py-1 text-xs font-semibold text-blue-400 backdrop-blur-sm hover:bg-blue-500/10 transition-colors mb-6">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-600 dark:bg-blue-500/5 dark:text-blue-400 backdrop-blur-sm hover:bg-blue-500/20 dark:hover:bg-blue-500/10 transition-colors mb-6">
             <Sparkles className="h-3.5 w-3.5" />
             <span>Visual Soroban Smart Contracts</span>
           </div>
 
           {/* Main Headline */}
-          <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
+          <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl md:text-6xl lg:text-7xl">
             Build Stellar Smart Contracts.{" "}
-            <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
               Without the Code.
             </span>
           </h1>
 
           {/* Sub-headline */}
-          <p className="mt-6 max-w-2xl text-lg text-slate-400 sm:text-xl leading-relaxed">
+          <p className="mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-400 sm:text-xl leading-relaxed">
             LumensBlock makes on-chain logic visual. Drag and drop block components, configure logic parameters, and deploy directly to the Stellar network with one click.
           </p>
 
@@ -44,7 +44,7 @@ export default function Hero() {
               href="https://github.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-sm px-8 py-4 text-base font-semibold text-slate-200 transition-all hover:bg-slate-800 hover:text-white hover:border-slate-700 hover:scale-[1.03] active:scale-[0.97]"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/60 backdrop-blur-sm px-8 py-4 text-base font-semibold text-slate-700 dark:text-slate-200 transition-all hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-400 dark:hover:border-slate-700 hover:scale-[1.03] active:scale-[0.97]"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                 <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.137 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
@@ -55,7 +55,7 @@ export default function Hero() {
         </div>
 
         {/* Mock Editor Preview Layout */}
-        <div className="relative mt-20 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 shadow-2xl backdrop-blur-md lg:p-6">
+        <div className="relative mt-20 rounded-2xl border border-slate-200 bg-white/60 dark:border-slate-800 dark:bg-slate-900/40 p-4 shadow-2xl backdrop-blur-md lg:p-6">
           <div className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-b from-blue-500/5 to-purple-500/5 opacity-50"></div>
           
           {/* Header Bar of Mock Editor */}
@@ -73,7 +73,7 @@ export default function Hero() {
           </div>
 
           {/* Visual Workspace Content */}
-          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 p-4 bg-slate-950/80 rounded-xl border border-slate-800/60 overflow-hidden min-h-[320px]">
+          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 p-4 bg-slate-50/90 dark:bg-slate-950/80 rounded-xl border border-slate-200 dark:border-slate-800/60 overflow-hidden min-h-[320px]">
             {/* SVG Connecting Flow Lines (Hidden on Mobile) */}
             <svg className="absolute inset-0 pointer-events-none hidden md:block" width="100%" height="100%">
               {/* Path 1 -> 2 */}
@@ -115,70 +115,70 @@ export default function Hero() {
             </svg>
 
             {/* Block 1: Auth */}
-            <div className="z-10 flex flex-col justify-between rounded-xl border border-blue-500/30 bg-slate-900/95 p-5 shadow-lg shadow-blue-500/5 hover:border-blue-500/50 hover:shadow-blue-500/10 transition-all duration-300">
+            <div className="z-10 flex flex-col justify-between rounded-xl border border-blue-300 bg-white/95 dark:border-blue-500/30 dark:bg-slate-900/95 p-5 shadow-lg shadow-blue-500/5 hover:border-blue-400 dark:hover:border-blue-500/50 transition-all duration-300">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-400">
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-100 dark:bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-400">
                     <Play className="h-3 w-3 fill-current" />
                     Entry point
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">ID: 01</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID: 01</span>
                 </div>
-                <h3 className="text-base font-bold text-white">Initialize Contract</h3>
-                <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Initialize Contract</h3>
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Requires admin signature authentication to set contract owner variables.
                 </p>
               </div>
-              <div className="mt-4 border-t border-slate-800/80 pt-3 flex flex-col gap-1.5 text-2xs font-mono text-slate-500">
+              <div className="mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex flex-col gap-1.5 text-2xs font-mono text-slate-500">
                 <div className="flex justify-between">
                   <span>admin:</span>
-                  <span className="text-blue-400">Address</span>
+                  <span className="text-blue-600 dark:text-blue-400">Address</span>
                 </div>
               </div>
             </div>
 
             {/* Block 2: Condition */}
-            <div className="z-10 flex flex-col justify-between rounded-xl border border-indigo-500/30 bg-slate-900/95 p-5 shadow-lg shadow-indigo-500/5 hover:border-indigo-500/50 hover:shadow-indigo-500/10 transition-all duration-300">
+            <div className="z-10 flex flex-col justify-between rounded-xl border border-indigo-300 bg-white/95 dark:border-indigo-500/30 dark:bg-slate-900/95 p-5 shadow-lg shadow-indigo-500/5 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all duration-300">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-400">
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-indigo-100 dark:bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-400">
                     <ShieldAlert className="h-3 w-3" />
                     Condition
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">ID: 02</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID: 02</span>
                 </div>
-                <h3 className="text-base font-bold text-white">Verify Balance</h3>
-                <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Verify Balance</h3>
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Asserts that the sender account holds at least the minimum required XLM balance.
                 </p>
               </div>
-              <div className="mt-4 border-t border-slate-800/80 pt-3 flex flex-col gap-1.5 text-2xs font-mono text-slate-500">
+              <div className="mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex flex-col gap-1.5 text-2xs font-mono text-slate-500">
                 <div className="flex justify-between">
                   <span>min_balance:</span>
-                  <span className="text-indigo-400">100.0 XLM</span>
+                  <span className="text-indigo-600 dark:text-indigo-400">100.0 XLM</span>
                 </div>
               </div>
             </div>
 
             {/* Block 3: Action / Transfer */}
-            <div className="z-10 flex flex-col justify-between rounded-xl border border-purple-500/30 bg-slate-900/95 p-5 shadow-lg shadow-purple-500/5 hover:border-purple-500/50 hover:shadow-purple-500/10 transition-all duration-300">
+            <div className="z-10 flex flex-col justify-between rounded-xl border border-purple-300 bg-white/95 dark:border-purple-500/30 dark:bg-slate-900/95 p-5 shadow-lg shadow-purple-500/5 hover:border-purple-400 dark:hover:border-purple-500/50 transition-all duration-300">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-purple-500/10 px-2.5 py-1 text-xs font-semibold text-purple-400">
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-purple-100 dark:bg-purple-500/10 px-2.5 py-1 text-xs font-semibold text-purple-700 dark:text-purple-400">
                     <Coins className="h-3 w-3" />
                     Action
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">ID: 03</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">ID: 03</span>
                 </div>
-                <h3 className="text-base font-bold text-white">Execute Transfer</h3>
-                <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Execute Transfer</h3>
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Executes a cross-asset payment or transfer of XLM to the specified vault.
                 </p>
               </div>
-              <div className="mt-4 border-t border-slate-800/80 pt-3 flex flex-col gap-1.5 text-2xs font-mono text-slate-500">
+              <div className="mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-3 flex flex-col gap-1.5 text-2xs font-mono text-slate-500">
                 <div className="flex justify-between">
                   <span>recipient:</span>
-                  <span className="text-purple-400">Vault_Addr</span>
+                  <span className="text-purple-600 dark:text-purple-400">Vault_Addr</span>
                 </div>
               </div>
             </div>

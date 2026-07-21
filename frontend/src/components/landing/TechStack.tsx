@@ -27,7 +27,7 @@ export default function TechStack() {
   ]
 
   return (
-    <section id="tech-stack" className="relative border-t border-slate-900 bg-slate-950 py-20 lg:py-28">
+    <section id="tech-stack" className="relative border-t border-slate-200 bg-slate-50/50 dark:border-slate-900 dark:bg-slate-950 py-20 lg:py-28 transition-colors">
       {/* Mesh background effects */}
       <div className="absolute top-1/2 left-1/4 -z-10 h-80 w-80 rounded-full bg-blue-600/[0.03] blur-[120px]"></div>
       <div className="absolute top-1/3 right-1/4 -z-10 h-80 w-80 rounded-full bg-purple-600/[0.03] blur-[120px]"></div>
@@ -37,19 +37,19 @@ export default function TechStack() {
           
           {/* Info Side */}
           <div className="lg:col-span-5 flex flex-col gap-6">
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-400">CREDIBILITY & INFRASTRUCTURE</span>
-            <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl leading-tight">
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">CREDIBILITY & INFRASTRUCTURE</span>
+            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl leading-tight">
               Production-Ready Code. Stellar Capabilities.
             </h2>
-            <p className="text-slate-400 text-base leading-relaxed">
+            <p className="text-slate-600 dark:text-slate-400 text-base leading-relaxed">
               LumensBlock {"isn't"} just a simulator. It compiles your logical canvas into standard Soroban smart contracts, giving you the full performance, safety, and speed of Stellar{"'"}s next-generation Rust-based smart contract platform.
             </p>
             <div className="flex flex-wrap items-center gap-6 mt-2">
-              <div className="flex items-center gap-2 text-sm text-slate-300 font-mono bg-slate-900/60 border border-slate-800/80 px-3.5 py-1.5 rounded-lg">
+              <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 font-mono bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 px-3.5 py-1.5 rounded-lg shadow-sm dark:shadow-none">
                 <span className="h-2 w-2 rounded-full bg-blue-500"></span>
                 Soroban-Wasm
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-300 font-mono bg-slate-900/60 border border-slate-800/80 px-3.5 py-1.5 rounded-lg">
+              <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 font-mono bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 px-3.5 py-1.5 rounded-lg shadow-sm dark:shadow-none">
                 <span className="h-2 w-2 rounded-full bg-purple-500"></span>
                 Stellar Protocol
               </div>
@@ -63,15 +63,15 @@ export default function TechStack() {
               return (
                 <div
                   key={idx}
-                  className="rounded-xl border border-slate-900 bg-slate-900/10 p-6 hover:border-slate-800 hover:bg-slate-900/30 transition-all duration-300"
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-900 dark:bg-slate-900/10 hover:border-slate-300 dark:hover:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-all duration-300"
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-blue-400 border border-slate-800/80 mb-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-slate-900 dark:text-blue-400 border border-blue-100 dark:border-slate-800/80 mb-4">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-200">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-200">
                     {tech.title}
                   </h3>
-                  <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     {tech.description}
                   </p>
                 </div>

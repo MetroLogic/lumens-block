@@ -57,7 +57,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white selection:bg-blue-500/30 selection:text-blue-200 scroll-smooth">
+    <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-white selection:bg-blue-500/30 selection:text-blue-600 dark:selection:text-blue-200 scroll-smooth transition-colors">
       {/* Schema.org Structured Data */}
       <script
         type="application/ld+json"

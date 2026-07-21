@@ -9,28 +9,28 @@ export default function BlockNode({ type, data }: { type: string; data: { label:
   
   switch (type) {
     case "Condition":
-      colorClasses = "bg-rose-50 border-rose-300 text-rose-900 shadow-rose-100"
-      badgeColor = "bg-rose-200/60 text-rose-800"
+      colorClasses = "bg-rose-50 border-rose-300 text-rose-900 shadow-rose-100 dark:bg-rose-950/40 dark:border-rose-700/60 dark:text-rose-200 dark:shadow-none"
+      badgeColor = "bg-rose-200/60 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200"
       break
     case "Transfer":
-      colorClasses = "bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-100"
-      badgeColor = "bg-emerald-200/60 text-emerald-800"
+      colorClasses = "bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-700/60 dark:text-emerald-200 dark:shadow-none"
+      badgeColor = "bg-emerald-200/60 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"
       break
     case "Storage":
-      colorClasses = "bg-amber-50 border-amber-300 text-amber-900 shadow-amber-100"
-      badgeColor = "bg-amber-200/60 text-amber-800"
+      colorClasses = "bg-amber-50 border-amber-300 text-amber-900 shadow-amber-100 dark:bg-amber-950/40 dark:border-amber-700/60 dark:text-amber-200 dark:shadow-none"
+      badgeColor = "bg-amber-200/60 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
       break
     case "Event":
-      colorClasses = "bg-sky-50 border-sky-300 text-sky-900 shadow-sky-100"
-      badgeColor = "bg-sky-200/60 text-sky-800"
+      colorClasses = "bg-sky-50 border-sky-300 text-sky-900 shadow-sky-100 dark:bg-sky-950/40 dark:border-sky-700/60 dark:text-sky-200 dark:shadow-none"
+      badgeColor = "bg-sky-200/60 text-sky-800 dark:bg-sky-900/60 dark:text-sky-200"
       break
     case "Auth":
-      colorClasses = "bg-purple-50 border-purple-300 text-purple-900 shadow-purple-100"
-      badgeColor = "bg-purple-200/60 text-purple-800"
+      colorClasses = "bg-purple-50 border-purple-300 text-purple-900 shadow-purple-100 dark:bg-purple-950/40 dark:border-purple-700/60 dark:text-purple-200 dark:shadow-none"
+      badgeColor = "bg-purple-200/60 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
       break
     case "default":
-      colorClasses = "bg-blue-50 border-blue-300 text-blue-900 shadow-blue-100"
-      badgeColor = "bg-blue-200/60 text-blue-800"
+      colorClasses = "bg-blue-50 border-blue-300 text-blue-900 shadow-blue-100 dark:bg-blue-950/40 dark:border-blue-700/60 dark:text-blue-200 dark:shadow-none"
+      badgeColor = "bg-blue-200/60 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200"
       break
   }
 

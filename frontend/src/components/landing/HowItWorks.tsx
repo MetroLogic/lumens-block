@@ -13,11 +13,11 @@ export default function HowItWorks() {
       glowColor: "shadow-blue-500/10",
       svg: (
         <svg className="w-full h-32 text-blue-500/80" fill="none" viewBox="0 0 200 120" stroke="currentColor">
-          <rect x="20" y="20" width="120" height="40" rx="8" fill="rgba(30, 41, 59, 0.7)" stroke="currentColor" strokeWidth="1.5" />
-          <text x="35" y="45" fill="white" fontSize="11" fontFamily="monospace" fontWeight="600">Auth Guard</text>
+          <rect x="20" y="20" width="120" height="40" rx="8" fill="rgba(241, 245, 249, 0.9)" className="dark:fill-slate-800/70" stroke="currentColor" strokeWidth="1.5" />
+          <text x="35" y="45" fill="#334155" className="dark:fill-white" fontSize="11" fontFamily="monospace" fontWeight="600">Auth Guard</text>
           
           <rect x="60" y="75" width="120" height="40" rx="8" fill="rgba(59, 130, 246, 0.15)" stroke="currentColor" strokeWidth="2" strokeDasharray="4,4" className="animate-pulse" />
-          <text x="75" y="100" fill="#60a5fa" fontSize="11" fontFamily="monospace" fontWeight="600">Transfer XLM</text>
+          <text x="75" y="100" fill="#2563eb" className="dark:fill-blue-400" fontSize="11" fontFamily="monospace" fontWeight="600">Transfer XLM</text>
           
           <path d="M 80 40 L 80 75" stroke="#3b82f6" strokeWidth="2" markerEnd="url(#arrow)" />
           <circle cx="80" cy="57" r="3" fill="#60a5fa" className="animate-ping" />
@@ -34,17 +34,17 @@ export default function HowItWorks() {
       svg: (
         <svg className="w-full h-32 text-indigo-500/80" fill="none" viewBox="0 0 200 120" stroke="currentColor">
           {/* Slider 1 */}
-          <line x1="30" y1="40" x2="170" y2="40" stroke="rgba(71, 85, 105, 0.5)" strokeWidth="4" strokeLinecap="round" />
+          <line x1="30" y1="40" x2="170" y2="40" stroke="rgba(148, 163, 184, 0.4)" strokeWidth="4" strokeLinecap="round" />
           <line x1="30" y1="40" x2="110" y2="40" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
           <circle cx="110" cy="40" r="8" fill="white" stroke="#6366f1" strokeWidth="3" className="cursor-pointer" />
           
           {/* Slider 2 */}
-          <line x1="30" y1="80" x2="170" y2="80" stroke="rgba(71, 85, 105, 0.5)" strokeWidth="4" strokeLinecap="round" />
+          <line x1="30" y1="80" x2="170" y2="80" stroke="rgba(148, 163, 184, 0.4)" strokeWidth="4" strokeLinecap="round" />
           <line x1="30" y1="80" x2="150" y2="80" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
           <circle cx="150" cy="80" r="8" fill="white" stroke="#a855f7" strokeWidth="3" className="cursor-pointer" />
           
-          <text x="30" y="25" fill="#94a3b8" fontSize="9" fontFamily="sans-serif">LIMIT AMOUNT (XLM)</text>
-          <text x="30" y="65" fill="#94a3b8" fontSize="9" fontFamily="sans-serif">MAX FEE (STROOPS)</text>
+          <text x="30" y="25" fill="#64748b" className="dark:fill-slate-400" fontSize="9" fontFamily="sans-serif">LIMIT AMOUNT (XLM)</text>
+          <text x="30" y="65" fill="#64748b" className="dark:fill-slate-400" fontSize="9" fontFamily="sans-serif">MAX FEE (STROOPS)</text>
         </svg>
       )
     },
@@ -65,24 +65,24 @@ export default function HowItWorks() {
             <animateTransform attributeName="transform" type="rotate" from="0 100 60" to="360 100 60" dur="4s" repeatCount="indefinite" />
           </circle>
           
-          <rect x="45" y="95" width="110" height="20" rx="4" fill="#1e293b" stroke="#334155" />
-          <text x="100" y="108" textAnchor="middle" fill="#22c55e" fontSize="9" fontFamily="monospace" fontWeight="bold">DEPLOYED SUCCESSFULLY</text>
+          <rect x="45" y="95" width="110" height="20" rx="4" fill="#f1f5f9" stroke="#cbd5e1" className="dark:fill-slate-800 dark:stroke-slate-700" />
+          <text x="100" y="108" textAnchor="middle" fill="#16a34a" className="dark:fill-green-400" fontSize="9" fontFamily="monospace" fontWeight="bold">DEPLOYED SUCCESSFULLY</text>
         </svg>
       )
     }
   ]
 
   return (
-    <section id="how-it-works" className="relative border-t border-slate-900 bg-slate-950 py-20 lg:py-28">
+    <section id="how-it-works" className="relative border-t border-slate-200 bg-slate-50/50 dark:border-slate-900 dark:bg-slate-950 py-20 lg:py-28 transition-colors">
       {/* Visual background accents */}
       <div className="absolute top-1/2 left-1/2 -z-10 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/[0.02] blur-[150px]"></div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
             Contract Development, Reimagined
           </h2>
-          <p className="mt-4 text-lg text-slate-400">
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
             A visual pipeline mapping from drag-and-drop elements down to on-chain Soroban deployment.
           </p>
         </div>
@@ -90,14 +90,14 @@ export default function HowItWorks() {
         {/* Step Cards Grid */}
         <div className="mt-16 grid grid-cols-1 gap-12 lg:grid-cols-3 lg:gap-8 relative">
           {/* Connection Lines (Desktop only) */}
-          <div className="absolute top-1/3 left-1/4 right-1/4 h-0.5 border-t border-slate-800 border-dashed -z-10 hidden lg:block"></div>
+          <div className="absolute top-1/3 left-1/4 right-1/4 h-0.5 border-t border-slate-300 dark:border-slate-800 border-dashed -z-10 hidden lg:block"></div>
           
           {steps.map((step) => {
             const Icon = step.icon
             return (
               <div
                 key={step.id}
-                className={`relative flex flex-col justify-between rounded-2xl border border-slate-800/80 bg-slate-900/20 p-8 shadow-xl ${step.glowColor} backdrop-blur-sm hover:border-slate-700/60 hover:bg-slate-900/30 transition-all duration-300 group`}
+                className={`relative flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-8 shadow-xl ${step.glowColor} backdrop-blur-sm dark:border-slate-800/80 dark:bg-slate-900/20 hover:border-slate-300 dark:hover:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-all duration-300 group`}
               >
                 <div>
                   {/* Step Header */}
@@ -105,22 +105,22 @@ export default function HowItWorks() {
                     <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr ${step.color} text-white shadow-md`}>
                       <Icon className="h-6 w-6" />
                     </div>
-                    <span className="text-4xl font-extrabold text-slate-800/80 select-none font-mono">
+                    <span className="text-4xl font-extrabold text-slate-300 dark:text-slate-800/80 select-none font-mono">
                       {step.id}
                     </span>
                   </div>
 
                   {/* Title & Description */}
-                  <h3 className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors">
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                     {step.title}
                   </h3>
-                  <p className="mt-3 text-sm text-slate-400 leading-relaxed">
+                  <p className="mt-3 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                     {step.description}
                   </p>
                 </div>
 
                 {/* SVG Visual Graphic Container */}
-                <div className="mt-8 rounded-lg bg-slate-950/60 p-4 border border-slate-900 flex items-center justify-center">
+                <div className="mt-8 rounded-lg bg-slate-100/80 dark:bg-slate-950/60 p-4 border border-slate-200 dark:border-slate-900 flex items-center justify-center">
                   {step.svg}
                 </div>
               </div>
