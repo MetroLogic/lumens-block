@@ -8,11 +8,60 @@ import {
   MAX_GRAPH_BYTES,
   MAX_NODES,
   isBlockType,
+  OPERATORS,
+  type ConditionExpression,
+  type Operand,
 } from "./schema"
 
 function invalid(code: string, message: string, details?: string[]): CompileError {
   return { code, message, details }
 }
+
+/**
+ * Validates a ConditionExpression for operator correctness and non-empty operand values.
+ * Returns a CompileError when invalid, or null when the expression is acceptable.
+ */
+function validateConditionExpression(nodeId: string, raw: unknown): CompileError | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return invalid(
+      "INVALID_EXPRESSION",
+      `Node "${nodeId}" has a malformed conditionExpression (must be an object).`
+    )
+  }
+
+  const expr = raw as Record<string, unknown>
+
+  // Validate operator
+  if (!OPERATORS.includes(expr.operator as ConditionExpression["operator"])) {
+    return invalid(
+      "INVALID_EXPRESSION",
+      `Node "${nodeId}" has an invalid condition operator "${String(expr.operator)}".`,
+      [...OPERATORS]
+    )
+  }
+
+  // Validate left operand value is non-empty
+  const left = expr.left as Operand | undefined
+  if (!left || typeof left.value !== "string" || left.value.trim() === "") {
+    return invalid(
+      "INCOMPLETE_EXPRESSION",
+      `Node "${nodeId}" has an incomplete condition: left operand is empty.`
+    )
+  }
+
+  // Validate right operand value is non-empty
+  const right = expr.right as Operand | undefined
+  if (!right || typeof right.value !== "string" || right.value.trim() === "") {
+    return invalid(
+      "INCOMPLETE_EXPRESSION",
+      `Node "${nodeId}" has an incomplete condition: right operand is empty.`
+    )
+  }
+
+  return null
+}
+
+
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -48,6 +97,12 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
   const params = data.params
   if (params !== undefined && !isPlainObject(params)) {
     return invalid("INVALID_NODE", `Node "${id}" has invalid data.params.`)
+  }
+
+  // Validate structured conditionExpression when present on Condition nodes
+  if (type === "Condition" && isPlainObject(params) && params.conditionExpression !== undefined) {
+    const exprError = validateConditionExpression(id, params.conditionExpression)
+    if (exprError) return exprError
   }
 
   return {
