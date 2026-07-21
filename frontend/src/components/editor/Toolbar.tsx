@@ -1,7 +1,8 @@
 "use client"
 
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Sun, Moon } from "lucide-react"
 import { useRef } from "react"
+import { useTheme } from "./ThemeContext"
 
 const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
 
@@ -14,6 +15,7 @@ interface Props {
 
 export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock, onAutoLayout }: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const { theme, toggleTheme } = useTheme()
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
     event.dataTransfer.setData("application/blocktype", blockType)
@@ -35,19 +37,29 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock, 
   }
 
   return (
-    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-md">
+    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-md dark:border-slate-700 dark:bg-slate-800 dark:shadow-slate-900/50">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocks</p>
-        {onOpenShortcuts && (
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Blocks</p>
+        <div className="flex items-center gap-1">
           <button
-            onClick={onOpenShortcuts}
-            aria-label="Show keyboard shortcuts"
-            title="Keyboard shortcuts (?)"
-            className="ml-2 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 text-xs text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-200"
           >
-            ?
+            {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
           </button>
-        )}
+          {onOpenShortcuts && (
+            <button
+              onClick={onOpenShortcuts}
+              aria-label="Show keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-xs text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-200"
+            >
+              ?
+            </button>
+          )}
+        </div>
       </div>
       {BLOCK_TYPES.map((type, index) => (
         <div
@@ -59,17 +71,17 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock, 
           tabIndex={0}
           onDragStart={(e) => onDragStart(e, type)}
           onKeyDown={(e) => handleKeyDown(e, index, type)}
-          className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
         >
           {type}
         </div>
       ))}
 
-      <div className="mt-2 border-t border-slate-100 pt-2 flex flex-col gap-2">
+      <div className="mt-2 border-t border-slate-100 dark:border-slate-700 pt-2 flex flex-col gap-2">
         {onAutoLayout && (
           <button
             onClick={onAutoLayout}
-            className="w-full rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             Auto Layout
           </button>

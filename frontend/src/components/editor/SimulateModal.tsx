@@ -23,9 +23,9 @@ function ArgRow({ arg, onChange }: ArgRowProps) {
 
   return (
     <div className="flex flex-col gap-1">
-      <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+      <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-slate-300">
         <span>{arg.name}</span>
-        <span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-400 font-mono text-[10px]">
+        <span className="rounded px-1.5 py-0.5 bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-400 font-mono text-[10px]">
           {arg.type}
         </span>
       </label>
@@ -34,7 +34,7 @@ function ArgRow({ arg, onChange }: ArgRowProps) {
         value={arg.value}
         placeholder={placeholder}
         onChange={(e) => onChange(arg.name, e.target.value)}
-        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder-gray-300 outline-none focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
+        className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder-gray-300 outline-none focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:placeholder-slate-500 dark:focus:border-blue-500 dark:focus:bg-slate-800 transition-all"
       />
     </div>
   )
@@ -48,13 +48,13 @@ function ResourceBar({ label, value, max, unit }: { label: string; value: number
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex justify-between text-xs text-gray-500">
+      <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400">
         <span>{label}</span>
-        <span className="font-mono font-semibold text-gray-700">
+        <span className="font-mono font-semibold text-gray-700 dark:text-slate-200">
           {value.toLocaleString()} {unit}
         </span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-gray-100">
+      <div className="h-1.5 w-full rounded-full bg-gray-100 dark:bg-slate-700">
         <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -67,18 +67,18 @@ function EventCard({ event, index }: { event: SimulateEvent; index: number }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="rounded-lg border border-sky-100 bg-sky-50 text-xs">
+    <div className="rounded-lg border border-sky-100 bg-sky-50 dark:border-sky-900/50 dark:bg-sky-950/40 text-xs">
       <button
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center justify-between px-3 py-2 text-left"
       >
         <div className="flex items-center gap-2">
-          <span className="rounded bg-sky-200/60 px-1.5 py-0.5 font-mono text-sky-700 text-[10px]">
+          <span className="rounded bg-sky-200/60 px-1.5 py-0.5 font-mono text-sky-700 dark:bg-sky-900/60 dark:text-sky-300 text-[10px]">
             #{index + 1}
           </span>
-          <span className="font-semibold text-sky-900">{event.type}</span>
+          <span className="font-semibold text-sky-900 dark:text-sky-200">{event.type}</span>
           {event.topics.length > 0 && (
-            <span className="text-sky-500 truncate max-w-[200px]">
+            <span className="text-sky-500 dark:text-sky-400 truncate max-w-[200px]">
               {event.topics.join(", ")}
             </span>
           )}
@@ -90,21 +90,21 @@ function EventCard({ event, index }: { event: SimulateEvent; index: number }) {
         )}
       </button>
       {expanded && (
-        <div className="border-t border-sky-100 px-3 py-2">
-          <div className="mb-1 font-semibold text-sky-700">Topics</div>
+        <div className="border-t border-sky-100 dark:border-sky-900/50 px-3 py-2">
+          <div className="mb-1 font-semibold text-sky-700 dark:text-sky-300">Topics</div>
           <div className="flex flex-wrap gap-1 mb-2">
             {event.topics.length > 0 ? (
               event.topics.map((t, i) => (
-                <code key={i} className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-sky-800">
+                <code key={i} className="rounded bg-sky-100 dark:bg-sky-900/60 px-1.5 py-0.5 font-mono text-sky-800 dark:text-sky-200">
                   {t}
                 </code>
               ))
             ) : (
-              <span className="text-sky-400 italic">—</span>
+              <span className="text-sky-400 dark:text-sky-500 italic">—</span>
             )}
           </div>
-          <div className="mb-1 font-semibold text-sky-700">Data</div>
-          <code className="block rounded bg-sky-100 px-2 py-1 font-mono text-sky-800 break-all">
+          <div className="mb-1 font-semibold text-sky-700 dark:text-sky-300">Data</div>
+          <code className="block rounded bg-sky-100 dark:bg-sky-900/60 px-2 py-1 font-mono text-sky-800 dark:text-sky-200 break-all">
             {event.data || "—"}
           </code>
         </div>
@@ -163,22 +163,22 @@ export default function SimulateModal({
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="relative flex flex-col w-full max-w-2xl max-h-[90vh] rounded-2xl border border-gray-100 bg-white shadow-2xl outline-none overflow-hidden"
+        className="relative flex flex-col w-full max-w-2xl max-h-[90vh] rounded-2xl border border-gray-100 bg-white shadow-2xl outline-none overflow-hidden dark:border-slate-700 dark:bg-slate-800"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b px-6 py-4 shrink-0">
+        <div className="flex items-center justify-between border-b px-6 py-4 shrink-0 dark:border-slate-700">
           <div>
-            <h2 id="simulate-title" className="text-lg font-bold text-gray-900">
+            <h2 id="simulate-title" className="text-lg font-bold text-gray-900 dark:text-slate-100">
               Simulate Contract
             </h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-gray-400 dark:text-slate-400 mt-0.5">
               Dry-run your contract via Stellar RPC — no transaction submitted
             </p>
           </div>
           <button
             onClick={onClose}
             aria-label="Close simulation modal"
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors"
           >
             <X size={18} />
           </button>
@@ -189,9 +189,9 @@ export default function SimulateModal({
 
           {/* Arguments */}
           <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Invocation Arguments</h3>
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">Invocation Arguments</h3>
             {args.length === 0 ? (
-              <p className="text-sm text-gray-400 italic">No arguments inferred from the graph.</p>
+              <p className="text-sm text-gray-400 dark:text-slate-500 italic">No arguments inferred from the graph.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {args.map((arg) => (
@@ -259,11 +259,11 @@ export default function SimulateModal({
 
               {/* Resource usage */}
               <section>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3 flex items-center gap-1.5">
                   <Cpu size={14} className="text-violet-500" />
                   Resource Usage
                 </h3>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 dark:border-slate-700 dark:bg-slate-900/50 p-4 space-y-3">
                   <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                     <ResourceBar
                       label="CPU Instructions"
@@ -281,18 +281,18 @@ export default function SimulateModal({
                   <div className="grid grid-cols-2 gap-x-6 gap-y-3 pt-1">
                     <div className="flex items-center gap-2">
                       <Database size={12} className="text-gray-400 shrink-0" />
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 dark:text-slate-400">
                         Ledger reads:{" "}
-                        <span className="font-semibold text-gray-700">
+                        <span className="font-semibold text-gray-700 dark:text-slate-200">
                           {result.resources.readEntries} entries / {result.resources.readBytes.toLocaleString()} B
                         </span>
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Database size={12} className="text-gray-400 shrink-0" />
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 dark:text-slate-400">
                         Ledger writes:{" "}
-                        <span className="font-semibold text-gray-700">
+                        <span className="font-semibold text-gray-700 dark:text-slate-200">
                           {result.resources.writeEntries} entries / {result.resources.writeBytes.toLocaleString()} B
                         </span>
                       </span>
@@ -305,10 +305,10 @@ export default function SimulateModal({
         </div>
 
         {/* Footer */}
-        <div className="border-t px-6 py-4 shrink-0 flex items-center justify-end gap-3">
+        <div className="border-t px-6 py-4 shrink-0 flex items-center justify-end gap-3 dark:border-slate-700">
           <button
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 transition-colors"
           >
             Close
           </button>
