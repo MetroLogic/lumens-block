@@ -24,6 +24,7 @@ export {
   validateContractGraph,
   validateGraphStructure,
 } from "./validate"
+export type { ValidateContractGraphOptions } from "./validate"
 
 export { compileGraphToWasm, isToolchainAvailable } from "./compiler"
 export type { CompileOptions } from "./compiler"

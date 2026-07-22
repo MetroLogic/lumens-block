@@ -13,6 +13,17 @@ import ReactFlow, {
 import "reactflow/dist/style.css"
 import { useCallback, useEffect, useState } from "react"
 import { applyAutoLayout } from "@/lib/layout"
+import {
+  EMPTY_GRAPH_NODES,
+  GRAPH_AUTOSAVE_DEBOUNCE_MS,
+  clearGraphStorage,
+  downloadGraphJson,
+  loadGraphFromStorage,
+  parseImportedGraphJson,
+  saveGraphToStorage,
+  toContractGraph,
+  toReactFlowGraph,
+} from "@/lib/editor/graphPersistence"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
@@ -24,7 +35,6 @@ import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
-import type { Edge, Node } from "reactflow"
 
 const nodeTypes = {
   Condition: BlockNode,
@@ -35,19 +45,12 @@ const nodeTypes = {
   default: BlockNode,
 }
 
-const initialNodes = [
-  {
-    id: "1",
-    type: "default",
-    position: { x: 250, y: 150 },
-    data: { label: "Start" },
-  },
-]
-
 export default function BlockEditor() {
   const { theme } = useTheme()
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [nodes, setNodes, onNodesChange] = useNodesState(EMPTY_GRAPH_NODES)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [hydrated, setHydrated] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
@@ -58,6 +61,21 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+
+  const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
+    setToast({ message, type })
+  }, [])
+
+  const applyGraph = useCallback(
+    (graph: ContractGraph) => {
+      const { nodes: nextNodes, edges: nextEdges } = toReactFlowGraph(graph)
+      setNodes(nextNodes)
+      setEdges(nextEdges)
+      setTestResults(null)
+      setOverrideTestFailure(false)
+    },
+    [setNodes, setEdges]
+  )
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -125,12 +143,45 @@ export default function BlockEditor() {
       if (!confirmLoad) return
     }
 
-    setNodes(graph.nodes as Node[])
-    setEdges(graph.edges as Edge[])
+    applyGraph(graph)
     setIsTemplatesOpen(false)
+  }
+
+  const handleNew = useCallback(() => {
+    const confirmed = window.confirm(
+      "Clear the canvas and start a new graph? Unsaved changes in the current session will be lost."
+    )
+    if (!confirmed) return
+
+    setNodes(EMPTY_GRAPH_NODES)
+    setEdges([])
     setTestResults(null)
     setOverrideTestFailure(false)
-  }
+    clearGraphStorage()
+    saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
+  }, [setNodes, setEdges])
+
+  const handleExport = useCallback(() => {
+    downloadGraphJson(toContractGraph(nodes, edges))
+  }, [nodes, edges])
+
+  const handleImport = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text()
+        const result = parseImportedGraphJson(text)
+        if (!result.ok) {
+          showToast(result.error, "error")
+          return
+        }
+        applyGraph(result.graph)
+        showToast("Graph imported successfully.", "success")
+      } catch {
+        showToast("Could not read the selected file.", "error")
+      }
+    },
+    [applyGraph, showToast]
+  )
 
   const onAddBlock = useCallback(
     (type: string) => {
@@ -194,6 +245,35 @@ export default function BlockEditor() {
     void loadWalletInfo()
   }, [loadWalletInfo])
 
+  // Restore graph from localStorage once on mount
+  useEffect(() => {
+    const saved = loadGraphFromStorage()
+    if (saved) {
+      const { nodes: restoredNodes, edges: restoredEdges } = toReactFlowGraph(saved)
+      setNodes(restoredNodes)
+      setEdges(restoredEdges)
+    }
+    setHydrated(true)
+  }, [setNodes, setEdges])
+
+  // Debounced auto-save
+  useEffect(() => {
+    if (!hydrated) return
+
+    const timer = window.setTimeout(() => {
+      saveGraphToStorage(toContractGraph(nodes, edges))
+    }, GRAPH_AUTOSAVE_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [nodes, edges, hydrated])
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
   return (
     <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
       <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
@@ -224,6 +304,9 @@ export default function BlockEditor() {
         onOpenTemplates={() => setIsTemplatesOpen(true)}
         onAddBlock={onAddBlock}
         onAutoLayout={handleAutoLayout}
+        onNew={handleNew}
+        onExport={handleExport}
+        onImport={(file) => void handleImport(file)}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
@@ -278,6 +361,19 @@ export default function BlockEditor() {
         onClose={() => setIsTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
       />
+
+      {toast && (
+        <div
+          role="status"
+          className={`absolute left-1/2 top-4 z-30 max-w-md -translate-x-1/2 rounded-lg border px-4 py-2 text-sm shadow-lg ${
+            toast.type === "error"
+              ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-200"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
 
       {walletError && (
         <div className="absolute bottom-20 right-6 z-20 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow">
