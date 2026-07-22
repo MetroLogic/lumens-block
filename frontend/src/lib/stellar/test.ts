@@ -1,6 +1,6 @@
 import type { Edge, Node } from "reactflow"
 
-import type { CompileError } from "@/lib/compile/schema"
+import type { CompileError, TransferAsset } from "@/lib/compile/schema"
 import type {
   ContractTestCase,
   ContractTestInput,
@@ -8,6 +8,16 @@ import type {
 } from "@/lib/compile/test-schema"
 import { getFunctionParamsFromGraph, paramRustTypeToInputType } from "@/lib/compile/codegen"
 import { normalizeReactFlowGraph } from "@/lib/compile/validate"
+
+function resolveTransferTokenFromGraph(graph: ReturnType<typeof normalizeReactFlowGraph>): string {
+  for (const node of graph.nodes) {
+    if (node.type !== "Transfer") continue
+    const params = node.data.params as { asset?: TransferAsset; token?: string } | undefined
+    const id = params?.asset?.contractId ?? params?.token
+    if (id) return id
+  }
+  return ""
+}
 
 export class ContractTestError extends Error {
   readonly code: string
@@ -35,13 +45,17 @@ export function inferTestInputsFromGraph(graph: {
   edges: Edge[]
 }): ContractTestInput[] {
   const normalized = normalizeReactFlowGraph(graph)
+  const transferToken = resolveTransferTokenFromGraph(normalized)
   return getFunctionParamsFromGraph(normalized)
     .filter((param) => param.name !== "env")
-    .map((param) => ({
-      name: param.name,
-      type: paramRustTypeToInputType(param.rustType),
-      value: defaultValueForType(paramRustTypeToInputType(param.rustType)),
-    }))
+    .map((param) => {
+      const type = paramRustTypeToInputType(param.rustType)
+      const value =
+        param.name === "token" && transferToken
+          ? transferToken
+          : defaultValueForType(type)
+      return { name: param.name, type, value }
+    })
 }
 
 function defaultValueForType(type: ContractTestInput["type"]): string {

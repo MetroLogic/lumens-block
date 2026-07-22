@@ -53,9 +53,28 @@ export const BLOCK_TYPES = [
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
+/** Asset kind selectable on Transfer blocks. */
+export type AssetKind = "xlm" | "sac"
+
+/**
+ * Structured asset selection for Transfer blocks.
+ * Persisted in node data; `token` is kept in sync with `contractId` for readers that expect a string.
+ */
+export interface TransferAsset {
+  kind: AssetKind
+  /** Resolved SAC contract address (native XLM SAC or custom). */
+  contractId?: string
+  /** Token symbol from SAC metadata (e.g. "XLM", "USDC"). */
+  symbol?: string
+  /** Token name from SAC metadata. */
+  name?: string
+}
+
 export interface BlockParameters {
-  /** Token contract address for Transfer blocks */
+  /** Token contract address for Transfer blocks (synced from `asset.contractId` when set) */
   token?: string
+  /** Structured asset selection for Transfer blocks (XLM or custom SAC) */
+  asset?: TransferAsset
   /** Storage key for Storage blocks */
   storageKey?: string
   /** Event name for Event blocks */

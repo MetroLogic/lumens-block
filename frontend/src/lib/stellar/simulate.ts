@@ -1,6 +1,11 @@
 import type { Edge, Node } from "reactflow"
 
+import type { TransferAsset } from "@/lib/compile/schema"
 import { normalizeReactFlowGraph } from "@/lib/compile/validate"
+
+function resolveTransferToken(params: { asset?: TransferAsset; token?: string } | undefined): string {
+  return params?.asset?.contractId ?? params?.token ?? ""
+}
 
 export interface SimulateArg {
   name: string
@@ -71,21 +76,27 @@ export function inferArgsFromGraph(graph: { nodes: Node[]; edges: Edge[] }): Sim
   const normalized = normalizeReactFlowGraph(graph)
   const args: SimulateArg[] = []
   const seen = new Set<string>()
+  let transferTokenDefault = ""
 
-  const add = (name: string, type: SimulateArg["type"]) => {
+  const add = (name: string, type: SimulateArg["type"], value = "") => {
     if (!seen.has(name)) {
       seen.add(name)
-      args.push({ name, type, value: "" })
+      args.push({ name, type, value })
     }
   }
 
   for (const node of normalized.nodes) {
     switch (node.type) {
-      case "Transfer":
+      case "Transfer": {
         add("from", "address")
         add("to", "address")
         add("amount", "number")
+        if (!transferTokenDefault) {
+          transferTokenDefault = resolveTransferToken(node.data.params)
+        }
+        add("token", "address", transferTokenDefault)
         break
+      }
       case "Auth":
         add("caller", "address")
         break
