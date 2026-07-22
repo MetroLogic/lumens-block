@@ -72,7 +72,7 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
     return invalid("INVALID_NODE", `Node at index ${index} must be an object.`)
   }
 
-  const { id, type, data } = raw
+  const { id, type, data, position } = raw
 
   if (typeof id !== "string" || id.trim() === "") {
     return invalid("INVALID_NODE", `Node at index ${index} must have a non-empty string id.`)
@@ -105,9 +105,27 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
     if (exprError) return exprError
   }
 
+  let parsedPosition: ContractGraphNode["position"]
+  if (position !== undefined) {
+    if (
+      !isPlainObject(position) ||
+      typeof position.x !== "number" ||
+      typeof position.y !== "number" ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y)
+    ) {
+      return invalid(
+        "INVALID_NODE",
+        `Node "${id}" has invalid position (expected { x: number, y: number }).`
+      )
+    }
+    parsedPosition = { x: position.x, y: position.y }
+  }
+
   return {
     id,
     type,
+    ...(parsedPosition ? { position: parsedPosition } : {}),
     data: {
       label: data.label,
       ...(params !== undefined ? { params: params as ContractGraphNode["data"]["params"] } : {}),
@@ -143,12 +161,21 @@ function parseEdge(raw: unknown, index: number): ContractGraphEdge | CompileErro
   }
 }
 
+export interface ValidateContractGraphOptions {
+  /**
+   * When true, skip reachability / executable-block checks.
+   * Useful for editor save/load of in-progress graphs.
+   */
+  skipStructureValidation?: boolean
+}
+
 /**
  * Validates raw JSON input and returns a normalized ContractGraph or a structured error.
  */
 export function validateContractGraph(
   rawBody: unknown,
-  byteLength?: number
+  byteLength?: number,
+  options?: ValidateContractGraphOptions
 ): { ok: true; graph: ContractGraph } | { ok: false; error: CompileError } {
   if (byteLength !== undefined && byteLength > MAX_GRAPH_BYTES) {
     return {
@@ -284,9 +311,11 @@ export function validateContractGraph(
 
   const graph: ContractGraph = { nodes: parsedNodes, edges: parsedEdges }
 
-  const structureError = validateGraphStructure(graph)
-  if (structureError) {
-    return { ok: false, error: structureError }
+  if (!options?.skipStructureValidation) {
+    const structureError = validateGraphStructure(graph)
+    if (structureError) {
+      return { ok: false, error: structureError }
+    }
   }
 
   return { ok: true, graph }

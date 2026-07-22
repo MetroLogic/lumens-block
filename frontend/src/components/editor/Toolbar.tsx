@@ -1,6 +1,6 @@
 "use client"
 
-import { FolderOpen, Sun, Moon } from "lucide-react"
+import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
@@ -11,10 +11,22 @@ interface Props {
   onOpenTemplates?: () => void
   onAddBlock?: (type: string) => void
   onAutoLayout?: () => void
+  onNew?: () => void
+  onExport?: () => void
+  onImport?: (file: File) => void
 }
 
-export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock, onAutoLayout }: Props) {
+export default function Toolbar({
+  onOpenShortcuts,
+  onOpenTemplates,
+  onAddBlock,
+  onAutoLayout,
+  onNew,
+  onExport,
+  onImport,
+}: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { theme, toggleTheme } = useTheme()
 
   const onDragStart = (event: React.DragEvent, blockType: string) => {
@@ -34,6 +46,15 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock, 
       const prevIndex = (index - 1 + BLOCK_TYPES.length) % BLOCK_TYPES.length
       itemRefs.current[prevIndex]?.focus()
     }
+  }
+
+  const handleImportChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      onImport?.(file)
+    }
+    // Allow re-selecting the same file
+    event.target.value = ""
   }
 
   return (
@@ -85,6 +106,46 @@ export default function Toolbar({ onOpenShortcuts, onOpenTemplates, onAddBlock, 
           >
             Auto Layout
           </button>
+        )}
+        {(onNew || onExport || onImport) && (
+          <div className="flex flex-col gap-1.5">
+            {onNew && (
+              <button
+                onClick={onNew}
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                <FilePlus2 size={14} />
+                New
+              </button>
+            )}
+            {onExport && (
+              <button
+                onClick={onExport}
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                <Download size={14} />
+                Export JSON
+              </button>
+            )}
+            {onImport && (
+              <>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  <Upload size={14} />
+                  Import JSON
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={handleImportChange}
+                />
+              </>
+            )}
+          </div>
         )}
         {onOpenTemplates && (
           <button
