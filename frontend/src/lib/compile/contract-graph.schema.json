@@ -24,6 +24,17 @@
       "type": "string",
       "enum": ["default", "Condition", "Transfer", "Storage", "Event", "Auth"]
     },
+    "transferAsset": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["xlm", "sac"] },
+        "contractId": { "type": "string" },
+        "symbol": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
     "node": {
       "type": "object",
       "required": ["id", "type", "data"],
@@ -48,6 +59,7 @@
               "type": "object",
               "properties": {
                 "token": { "type": "string" },
+                "asset": { "$ref": "#/definitions/transferAsset" },
                 "storageKey": { "type": "string" },
                 "eventName": { "type": "string" },
                 "condition": { "type": "string" }

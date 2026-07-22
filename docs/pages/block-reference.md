@@ -50,14 +50,18 @@ Start → Auth → Transfer
 
 Executes a token transfer between two addresses via the Stellar token interface.
 
-**Config fields:** none in the visual editor — all values are passed as function parameters at call time.
+**Config fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `asset` | no | Asset selector in the visual editor. Choose **Native XLM** (no address needed) or **Custom SAC token** and enter a Stellar Asset Contract address. On Testnet, a valid SAC address fetches and displays the token `symbol` / `name`. Stored as `params.asset` (`kind`, `contractId`, `symbol`, `name`) and synced to `params.token`. |
 
 | Generated parameter | Rust type | Description |
 |---|---|---|
 | `from` | `Address` | Sender address |
 | `to` | `Address` | Recipient address |
 | `amount` | `i128` | Amount in stroops (1 XLM = 10,000,000 stroops) |
-| `token` | `Address` | Token contract address |
+| `token` | `Address` | Token contract address (defaults from the block's asset selection when simulating or testing) |
 
 **Generated Soroban code:**
 ```rust
