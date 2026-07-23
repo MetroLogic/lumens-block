@@ -81,7 +81,9 @@ export default function DeployButton({
     setMessage(null)
 
     try {
-      const result = await deployContract({ nodes, edges }, selectedNetwork)
+      const result = await deployContract({ nodes, edges }, selectedNetwork, (stage) => {
+        setMessage(stage)
+      })
       setStatus("success")
       setMessage(result)
       setIsConfirmOpen(false)
