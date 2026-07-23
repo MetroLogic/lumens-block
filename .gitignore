@@ -6,3 +6,5 @@ node_modules
 backend/target
 contracts/target
 backend/target
+playwright-report/
+test-results/

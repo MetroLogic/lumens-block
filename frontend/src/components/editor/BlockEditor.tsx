@@ -187,9 +187,10 @@ export default function BlockEditor() {
     (type: string) => {
       if (!reactFlowInstance) return
 
+      const offset = nodes.length * 180
       const position = reactFlowInstance.screenToFlowPosition({
         x: window.innerWidth / 2,
-        y: window.innerHeight / 2,
+        y: window.innerHeight / 2 + offset,
       })
 
       const newNode = {
@@ -201,7 +202,7 @@ export default function BlockEditor() {
 
       setNodes((nds) => nds.concat(newNode))
     },
-    [reactFlowInstance, setNodes]
+    [nodes.length, reactFlowInstance, setNodes]
   )
 
   const handleTestResultsChange = useCallback((result: ContractTestRunResult | null) => {

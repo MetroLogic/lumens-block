@@ -28,7 +28,7 @@ test("graph is saved to localStorage and restored on reload", async ({ page }) =
 
   // Wait until localStorage has been written
   await page.waitForFunction(() => {
-    const raw = localStorage.getItem("lumens-block-graph")
+    const raw = localStorage.getItem("lumens-block:graph")
     if (!raw) return false
     try {
       const graph = JSON.parse(raw) as { nodes: unknown[] }

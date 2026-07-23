@@ -31,15 +31,51 @@ test("drag a block from the toolbar and drop it on the canvas", async ({ page })
   const dropX = canvasBox!.x + canvasBox!.width / 2
   const dropY = canvasBox!.y + canvasBox!.height / 2
 
-  // Perform the drag: set dataTransfer so BlockEditor.onDrop receives the type
-  await transferBlock.dispatchEvent("dragstart", {
-    dataTransfer: { setData: () => undefined, dropEffect: "move" },
-  })
+  // Perform HTML5 drag and drop with a real DataTransfer payload
+  await page.evaluate(
+    ({ sourceId, targetId, blockType }) => {
+      const source = document.querySelector(`[data-testid="${sourceId}"]`)
+      const target = document.querySelector(`[data-testid="${targetId}"]`)
+      if (!source || !target) return
 
-  // Use dragTo with a target position
-  await transferBlock.dragTo(canvas, {
-    targetPosition: { x: canvasBox!.width / 2, y: canvasBox!.height / 2 },
-  })
+      const dataTransfer = new DataTransfer()
+      dataTransfer.setData("application/blocktype", blockType)
+
+      const dragStartEvent = new DragEvent("dragstart", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+      })
+      source.dispatchEvent(dragStartEvent)
+
+      const targetRect = target.getBoundingClientRect()
+      const clientX = targetRect.left + targetRect.width / 2
+      const clientY = targetRect.top + targetRect.height / 2
+
+      const dragOverEvent = new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        clientX,
+        clientY,
+        dataTransfer,
+      })
+      target.dispatchEvent(dragOverEvent)
+
+      const dropEvent = new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        clientX,
+        clientY,
+        dataTransfer,
+      })
+      target.dispatchEvent(dropEvent)
+    },
+    {
+      sourceId: "toolbar-block-transfer",
+      targetId: "editor-canvas",
+      blockType: "Transfer",
+    }
+  )
 
   // Give React a moment to reconcile
   await page.waitForTimeout(300)
