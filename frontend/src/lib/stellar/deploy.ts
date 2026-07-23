@@ -204,7 +204,7 @@ async function signAndSubmitTransaction(
   const sendResult = await rpcServer.sendTransaction(signedTx)
 
   if (sendResult.status === "ERROR") {
-    throw new Error(`Transaction submission failed: ${JSON.stringify(sendResult.errorResultXdr ?? sendResult)}`)
+    throw new Error(`Transaction submission failed: ${JSON.stringify((sendResult as any).errorResultXdr ?? sendResult)}`)
   }
 
   let txResult = await rpcServer.getTransaction(sendResult.hash)
@@ -307,9 +307,10 @@ export async function deployContract(
     config.passphrase
   )
 
-  if (!contractId && createTxResult.returnValue) {
+  const txReturnValue = (createTxResult as any).returnValue
+  if (!contractId && txReturnValue) {
     try {
-      contractId = Address.fromScVal(createTxResult.returnValue).toString()
+      contractId = Address.fromScVal(txReturnValue).toString()
     } catch {
       // Fallback
     }
