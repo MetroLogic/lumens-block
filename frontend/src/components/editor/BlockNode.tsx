@@ -1,9 +1,11 @@
 "use client"
 
-import React from "react"
+import React, { useEffect } from "react"
 import { Handle, Position, useReactFlow } from "reactflow"
 import ConditionExpressionBuilder from "./ConditionExpressionBuilder"
-import type { ConditionExpression } from "@/lib/compile/schema"
+import AssetSelector from "./AssetSelector"
+import type { ConditionExpression, TransferAsset } from "@/lib/compile/schema"
+import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
 // ---------------------------------------------------------------------------
 // Type augmentation: allow BlockNode to receive any data shape
@@ -16,6 +18,7 @@ interface NodeData {
     conditionExpression?: ConditionExpression
     storageKey?: string
     token?: string
+    asset?: TransferAsset
     eventName?: string
   }
 }
@@ -25,6 +28,12 @@ interface BlockNodeProps {
   type: string
   data: NodeData
   selected?: boolean
+}
+
+function assetBadgeLabel(asset: TransferAsset | undefined): string | null {
+  if (!asset) return null
+  if (asset.kind === "xlm") return asset.symbol ?? "XLM"
+  return asset.symbol ?? null
 }
 
 export default function BlockNode({ id, type, data, selected }: BlockNodeProps) {
@@ -49,6 +58,8 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
       colorClasses =
         "bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-700/60 dark:text-emerald-200 dark:shadow-none"
       badgeColor = "bg-emerald-200/60 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"
+      panelBorder =
+        "border-emerald-200 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-950/50"
       break
     case "Storage":
       colorClasses =
@@ -97,6 +108,24 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
     updateParams({ conditionExpression: expr })
   }
 
+  const handleAssetChange = (asset: TransferAsset) => {
+    updateParams({
+      asset,
+      token: asset.contractId,
+    })
+  }
+
+  // Default Transfer asset to XLM when the panel opens and nothing is stored yet
+  useEffect(() => {
+    if (type !== "Transfer" || !selected) return
+    if (data.params?.asset) return
+    const xlm = getNativeXlmAsset()
+    updateParams({ asset: xlm, token: xlm.contractId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only seed once when panel opens empty
+  }, [type, selected, data.params?.asset])
+
+  const transferBadge = type === "Transfer" ? assetBadgeLabel(data.params?.asset) : null
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -122,6 +151,14 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           {type === "default" ? "Start" : type}
         </span>
         <div className="text-sm font-semibold mt-1">{data.label}</div>
+        {transferBadge && (
+          <span
+            className={`mt-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${badgeColor}`}
+            title={data.params?.asset?.contractId}
+          >
+            {transferBadge}
+          </span>
+        )}
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -142,6 +179,25 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           <ConditionExpressionBuilder
             value={data.params?.conditionExpression}
             onChange={handleExpressionChange}
+          />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Transfer asset selector — only visible when node is selected         */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "Transfer" && selected && (
+        <div
+          className={`border-t-2 rounded-b-xl px-3 py-3 min-w-[240px] ${panelBorder}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+            Asset
+          </p>
+          <AssetSelector
+            value={data.params?.asset ?? getNativeXlmAsset()}
+            onChange={handleAssetChange}
           />
         </div>
       )}
