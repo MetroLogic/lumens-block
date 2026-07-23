@@ -11,7 +11,7 @@ import ReactFlow, {
   type ReactFlowInstance,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { applyAutoLayout } from "@/lib/layout"
 import {
   EMPTY_GRAPH_NODES,
@@ -61,6 +61,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const skipNextAutosaveRef = useRef(false)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -157,8 +158,8 @@ export default function BlockEditor() {
     setEdges([])
     setTestResults(null)
     setOverrideTestFailure(false)
+    skipNextAutosaveRef.current = true
     clearGraphStorage()
-    saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
   }, [setNodes, setEdges])
 
   const handleExport = useCallback(() => {
@@ -260,6 +261,10 @@ export default function BlockEditor() {
   // Debounced auto-save
   useEffect(() => {
     if (!hydrated) return
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false
+      return
+    }
 
     const timer = window.setTimeout(() => {
       saveGraphToStorage(toContractGraph(nodes, edges))
