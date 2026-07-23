@@ -45,33 +45,6 @@ const nodeTypes = {
   default: BlockNode,
 }
 
-const STORAGE_KEY = "lumens-block-graph"
-
-const initialNodes = [
-  {
-    id: "1",
-    type: "default",
-    position: { x: 250, y: 150 },
-    data: { label: "Start" },
-  },
-]
-
-function loadGraph(): { nodes: Node[]; edges: Edge[] } | null {
-  if (typeof window === "undefined") return null
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as { nodes: Node[]; edges: Edge[] }
-  } catch {
-    return null
-  }
-}
-
-export default function BlockEditor() {
-  const { theme } = useTheme()
-  const saved = loadGraph()
-  const [nodes, setNodes, onNodesChange] = useNodesState(saved?.nodes ?? initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(saved?.edges ?? [])
 export default function BlockEditor() {
   const { theme } = useTheme()
   const [nodes, setNodes, onNodesChange] = useNodesState(EMPTY_GRAPH_NODES)
@@ -272,11 +245,6 @@ export default function BlockEditor() {
     void loadWalletInfo()
   }, [loadWalletInfo])
 
-  // Persist graph to localStorage on every change
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }))
-  }, [nodes, edges])
   // Restore graph from localStorage once on mount
   useEffect(() => {
     const saved = loadGraphFromStorage()
