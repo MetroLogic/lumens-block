@@ -39,6 +39,8 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # Playwright E2E — enabled once issue #7 is complete
-      # - name: E2E tests
-      #   run: npx playwright test
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: npm run test:e2e

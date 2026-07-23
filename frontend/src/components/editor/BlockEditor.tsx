@@ -35,6 +35,8 @@ const nodeTypes = {
   default: BlockNode,
 }
 
+const STORAGE_KEY = "lumens-block-graph"
+
 const initialNodes = [
   {
     id: "1",
@@ -44,10 +46,22 @@ const initialNodes = [
   },
 ]
 
+function loadGraph(): { nodes: Node[]; edges: Edge[] } | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as { nodes: Node[]; edges: Edge[] }
+  } catch {
+    return null
+  }
+}
+
 export default function BlockEditor() {
   const { theme } = useTheme()
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const saved = loadGraph()
+  const [nodes, setNodes, onNodesChange] = useNodesState(saved?.nodes ?? initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(saved?.edges ?? [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
@@ -194,6 +208,12 @@ export default function BlockEditor() {
     void loadWalletInfo()
   }, [loadWalletInfo])
 
+  // Persist graph to localStorage on every change
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }))
+  }, [nodes, edges])
+
   return (
     <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
       <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
@@ -228,7 +248,7 @@ export default function BlockEditor() {
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
 
-      <div className="h-full w-full" onDragOver={onDragOver} onDrop={onDrop}>
+      <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
           nodes={nodes}
           edges={edges}

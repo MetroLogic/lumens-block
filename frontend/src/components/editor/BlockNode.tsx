@@ -102,6 +102,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
   // -------------------------------------------------------------------------
   return (
     <div
+      data-testid={`block-node-${type}`}
       className={`relative rounded-xl border-2 shadow-sm font-sans min-w-[180px] ${
         selected ? "ring-2 ring-blue-500 ring-offset-1" : ""
       } ${colorClasses}`}
@@ -128,6 +129,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
       {/* ------------------------------------------------------------------ */}
       {type === "Condition" && selected && (
         <div
+          data-testid="config-panel"
           className={`border-t-2 rounded-b-xl px-3 py-3 ${panelBorder}`}
           // Prevent React Flow from interpreting drag/click inside the panel
           // as a node drag, which would move the node unexpectedly.
