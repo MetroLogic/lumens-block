@@ -77,6 +77,37 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) and click **Open Editor** to start building.
 
+### Running Tests
+
+**Unit tests** (Vitest):
+
+```bash
+cd frontend
+npm test
+```
+
+**End-to-end tests** (Playwright):
+
+```bash
+cd frontend
+
+# Install Playwright browsers on first run
+npx playwright install --with-deps chromium
+
+# Run all E2E tests (starts the Next.js dev server automatically)
+npm run test:e2e
+
+# Open the interactive Playwright UI
+npm run test:e2e:ui
+```
+
+Tests are located in `frontend/e2e/` and cover:
+- Landing page load and navigation to `/editor`
+- Dragging a block from the toolbar onto the canvas
+- Connecting two nodes via their handles
+- Clicking a Condition node to open its config panel
+- Graph persistence via `localStorage` across page reloads
+
 ### Backend (Rust API)
 
 ```bash

@@ -58,7 +58,7 @@ export default function Toolbar({
   }
 
   return (
-    <div className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-md dark:border-slate-700 dark:bg-slate-800 dark:shadow-slate-900/50">
+    <div data-testid="toolbar" className="absolute left-4 top-4 z-10 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-md dark:border-slate-700 dark:bg-slate-800 dark:shadow-slate-900/50">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Blocks</p>
         <div className="flex items-center gap-1">
@@ -90,6 +90,7 @@ export default function Toolbar({
           }}
           draggable
           tabIndex={0}
+          data-testid={`toolbar-block-${type.toLowerCase()}`}
           onDragStart={(e) => onDragStart(e, type)}
           onKeyDown={(e) => handleKeyDown(e, index, type)}
           className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
