@@ -119,7 +119,7 @@ export default function TestsPanel({ nodes, edges, onResultsChange }: Props) {
   const resultByCaseId = new Map(result?.cases.map((caseResult) => [caseResult.id, caseResult]))
 
   return (
-    <div className="absolute right-4 top-4 z-10 flex w-[360px] max-h-[calc(100%-6rem)] flex-col rounded-lg border bg-white shadow-md dark:border-slate-700 dark:bg-slate-800 dark:shadow-slate-900/50">
+    <div className="absolute right-4 top-20 z-10 flex w-[360px] max-w-[calc(100%-2rem)] max-h-[calc(100%-6rem)] flex-col rounded-lg border bg-white shadow-md max-sm:top-28 dark:border-slate-700 dark:bg-slate-800 dark:shadow-slate-900/50">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}

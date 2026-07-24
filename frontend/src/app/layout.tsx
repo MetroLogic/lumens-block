@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { ThemeProvider } from "@/components/editor/ThemeContext"
+import { NetworkProvider } from "@/components/editor/NetworkContext"
 
 export const metadata: Metadata = {
   title: "LumensBlock",
@@ -11,9 +12,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <NetworkProvider>{children}</NetworkProvider>
+        </ThemeProvider>
       </body>
     </html>
   )
 }
-

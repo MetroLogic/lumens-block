@@ -32,7 +32,9 @@ import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import { useTheme } from "./ThemeContext"
-import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
+import NetworkSelector from "./NetworkSelector"
+import { useNetwork } from "./NetworkContext"
+import { connectWallet, fetchWalletBalance } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
 
@@ -47,6 +49,7 @@ const nodeTypes = {
 
 export default function BlockEditor() {
   const { theme } = useTheme()
+  const { network: selectedNetwork } = useNetwork()
   const [nodes, setNodes, onNodesChange] = useNodesState(EMPTY_GRAPH_NODES)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [hydrated, setHydrated] = useState(false)
@@ -56,7 +59,6 @@ export default function BlockEditor() {
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
-  const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
   const [walletAddress, setWalletAddress] = useState<string | null>(null)
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
@@ -277,15 +279,8 @@ export default function BlockEditor() {
 
   return (
     <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
-      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
-        <select
-          value={selectedNetwork}
-          onChange={(event) => setSelectedNetwork(event.target.value as StellarNetwork)}
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-        >
-          <option value="testnet">Testnet</option>
-          <option value="mainnet">Mainnet</option>
-        </select>
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur max-sm:flex-col max-sm:items-stretch dark:border-slate-700 dark:bg-slate-800/90">
+        <NetworkSelector />
         <button
           onClick={() => void loadWalletInfo()}
           disabled={isWalletLoading}

@@ -66,7 +66,7 @@ Visit the [Stellar Friendbot](https://laboratory.stellar.org/#account-creator?ne
 
 ### Deploy steps
 
-1. In the LumensBlock editor, change the **network selector** in the toolbar from **Testnet** to **Mainnet**.
+1. In the LumensBlock editor, change the **network selector** in the toolbar from **Testnet** to **Mainnet**, acknowledge that the deployment uses real XLM, and confirm the switch.
 2. Ensure your Freighter wallet is also set to Mainnet (they must match).
 3. Click **Deploy Contract**.
 4. Review the fee estimate carefully — Mainnet fees reflect real XLM cost.

@@ -231,12 +231,10 @@ async function signAndSubmitTransaction(
  */
 export async function deployContract(
   graph: { nodes: Node[]; edges: Edge[] },
-  network?: StellarNetwork,
+  network: StellarNetwork,
   onProgress?: (stage: string) => void
 ): Promise<string> {
-  const targetNetwork: StellarNetwork =
-    network || (process.env.NEXT_PUBLIC_STELLAR_NETWORK as StellarNetwork) || "testnet"
-  const config = getNetworkConfig(targetNetwork)
+  const config = getNetworkConfig(network)
   const rpcServer = new SorobanRpc.Server(config.rpcUrl)
 
   onProgress?.("Connecting to wallet...")
@@ -264,7 +262,7 @@ export async function deployContract(
 
     const uploadSim = await rpcServer.simulateTransaction(uploadTx)
     if (SorobanRpc.Api.isSimulationSuccess(uploadSim)) {
-      await signAndSubmitTransaction(uploadTx, uploadSim, rpcServer, targetNetwork, config.passphrase)
+      await signAndSubmitTransaction(uploadTx, uploadSim, rpcServer, network, config.passphrase)
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
@@ -303,7 +301,7 @@ export async function deployContract(
     createTx,
     createSim,
     rpcServer,
-    targetNetwork,
+    network,
     config.passphrase
   )
 
