@@ -45,3 +45,7 @@ export { runContractTests } from "./testRunner"
 export type { TestRunOptions } from "./testRunner"
 export { getFunctionParamsFromGraph, paramRustTypeToInputType } from "./codegen"
 export type { FunctionParam } from "./codegen"
+
+export { compileGraph, topologicalSort } from "../compiler"
+export type { CompileGraphOptions } from "../compiler"
+

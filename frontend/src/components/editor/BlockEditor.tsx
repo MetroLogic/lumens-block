@@ -31,6 +31,7 @@ import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import CodePreviewModal from "./CodePreviewModal"
 import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -54,6 +55,7 @@ export default function BlockEditor() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
+  const [isCodePreviewOpen, setIsCodePreviewOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
   const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
@@ -344,6 +346,13 @@ export default function BlockEditor() {
           </div>
         )}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsCodePreviewOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+            title="Preview generated Soroban contract code"
+          >
+            <span className="font-mono font-bold text-blue-600 dark:text-blue-400">&lt;/&gt;</span> Code Preview
+          </button>
           <SimulateButton nodes={nodes} edges={edges} />
           <DeployButton
             nodes={nodes}
@@ -361,6 +370,12 @@ export default function BlockEditor() {
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
+      />
+      <CodePreviewModal
+        isOpen={isCodePreviewOpen}
+        onClose={() => setIsCodePreviewOpen(false)}
+        nodes={nodes}
+        edges={edges}
       />
 
       {toast && (
