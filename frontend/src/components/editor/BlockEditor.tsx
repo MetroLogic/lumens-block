@@ -369,7 +369,7 @@ export default function BlockEditor() {
         <div className="flex items-center gap-3">
           <SimulateButton nodes={nodes} edges={edges} />
           <DeployButton
-            nodes={nodesWithValidation}
+            nodes={nodes}
             edges={edges}
             selectedNetwork={selectedNetwork}
             walletAddress={walletAddress}
