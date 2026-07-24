@@ -34,6 +34,7 @@ It's designed for:
 |---|---|
 | Frontend | Next.js + TypeScript |
 | Block Editor | React Flow |
+| Backend | Rust + Axum |
 | Smart Contracts | Rust + Soroban SDK |
 | Stellar Integration | js-stellar-sdk |
 | Wallet | Freighter API |
@@ -110,14 +111,41 @@ Tests are located in `frontend/e2e/` and cover:
 
 ### Backend (Rust API)
 
+The backend service handles server-side compilation of Soroban smart contracts into WASM binaries and handles contract deployment submissions.
+
 ```bash
 cd backend
 
 # Check the project compiles
 cargo check
 
-# Run the backend
+# Run tests
+cargo test
+
+# Run the backend (default port: 8080)
 cargo run
+```
+
+#### Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | Health check (returns `{"status": "ok"}`) |
+| `/compile` | POST | Accepts Rust source (`{"source": "<rust code>"}`) and compiles server-side to Soroban WASM (base64) |
+| `/deploy` | POST | Accepts WASM, Stellar network, and signed transaction XDR (`{"signed_xdr": "..."}`), submits to Stellar network, and returns contract ID |
+
+#### Configuration & Environment Variables
+
+- `PORT`: Port to listen on (default: `8080`)
+- `STELLAR_RPC_TESTNET`: Custom Soroban RPC Testnet URL (default: `https://soroban-testnet.stellar.org`)
+- `STELLAR_RPC_MAINNET`: Custom Soroban RPC Mainnet URL (default: `https://soroban.stellar.org`)
+
+#### Running with Docker
+
+```bash
+cd backend
+docker build -t lumens-block-backend .
+docker run -p 8080:8080 lumens-block-backend
 ```
 
 ### Soroban Smart Contracts
