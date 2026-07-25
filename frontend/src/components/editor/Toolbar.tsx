@@ -116,7 +116,7 @@ export default function Toolbar({
                 className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 <FilePlus2 size={14} />
-                New
+                Clear canvas
               </button>
             )}
             {onExport && (
