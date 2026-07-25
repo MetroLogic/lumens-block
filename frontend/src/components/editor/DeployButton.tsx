@@ -4,6 +4,37 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
 import { CompileContractError, deployContract, estimateDeploymentFee, type StellarNetwork } from "@/lib/stellar/deploy"
 
+
+function getDeploymentErrorMessage(err: unknown): string {
+  if (err instanceof CompileContractError) {
+    return err.message
+  }
+
+  const rawMessage = err instanceof Error ? err.message : String(err ?? "")
+  const message = rawMessage.toLowerCase()
+
+  if (message.includes("freighter") && (message.includes("install") || message.includes("not found"))) {
+    return "Freighter wallet is not installed or unavailable. Install or unlock Freighter, then try again."
+  }
+
+  if (message.includes("rejected") || message.includes("denied") || message.includes("cancel")) {
+    return "Deployment was cancelled in Freighter. Confirm the signature request to continue."
+  }
+
+  if (message.includes("insufficient") || message.includes("underfunded") || message.includes("balance")) {
+    return "Insufficient XLM balance. Fund your Testnet account at https://laboratory.stellar.org/."
+  }
+
+  if (message.includes("network") || message.includes("timeout") || message.includes("failed to fetch") || message.includes("rpc")) {
+    return "Network or Stellar RPC request failed. Check your connection and try again."
+  }
+
+  if (message.includes("transaction")) {
+    return "Transaction submission failed. Check the console for details."
+  }
+
+  return "Deployment failed. Check the console for details."
+}
 interface Props {
   nodes: Node[]
   edges: Edge[]
@@ -88,14 +119,9 @@ export default function DeployButton({
       setMessage(result)
       setIsConfirmOpen(false)
     } catch (err) {
+      console.error("Deployment failed", err)
       setStatus("error")
-      if (err instanceof CompileContractError) {
-        setMessage(err.message)
-      } else if (err instanceof Error) {
-        setMessage(err.message)
-      } else {
-        setMessage("Deployment failed. Please try again.")
-      }
+      setMessage(getDeploymentErrorMessage(err))
     }
   }
 
@@ -109,16 +135,25 @@ export default function DeployButton({
   return (
     <>
       {message && (
-        <p
-          role="status"
-          className={`rounded-lg px-3 py-2 text-xs shadow ${
+        <div
+          role={status === "error" ? "alert" : "status"}
+          className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-xs shadow ${
             status === "error"
-              ? "bg-red-50 text-red-800 border border-red-200"
-              : "bg-green-50 text-green-800 border border-green-200"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-green-200 bg-green-50 text-green-800"
           }`}
         >
-          {message}
-        </p>
+          <span>{message}</span>
+          {status === "error" && (
+            <button
+              type="button"
+              onClick={() => setMessage(null)}
+              className="shrink-0 font-medium underline underline-offset-2"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
       )}
       <button
         onClick={() => setIsConfirmOpen(true)}
