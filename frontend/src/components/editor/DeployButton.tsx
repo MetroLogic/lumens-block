@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
 import { CompileContractError, deployContract, estimateDeploymentFee, type StellarNetwork } from "@/lib/stellar/deploy"
+import { addDeployment } from "@/lib/editor/deploymentHistory"
 
 interface Props {
   nodes: Node[]
@@ -85,8 +86,13 @@ export default function DeployButton({
         setMessage(stage)
       })
       setStatus("success")
-      setMessage(result)
+      setMessage(result.message)
       setIsConfirmOpen(false)
+      addDeployment({
+        network: selectedNetwork,
+        contractId: result.contractId,
+        txHash: result.txHash,
+      })
     } catch (err) {
       setStatus("error")
       if (err instanceof CompileContractError) {

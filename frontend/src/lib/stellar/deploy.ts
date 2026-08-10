@@ -16,6 +16,13 @@ import { normalizeReactFlowGraph } from "@/lib/compile/validate"
 /** @deprecated Import from `@/lib/compile/schema` for the canonical schema type. */
 export type ContractGraph = SchemaContractGraph
 
+export interface DeploymentResult {
+  message: string
+  contractId: string
+  txHash: string
+  network: StellarNetwork
+}
+
 export interface CompileResponse {
   wasm: string
   sourceHash: string
@@ -176,7 +183,7 @@ async function signAndSubmitTransaction(
   rpcServer: SorobanRpc.Server,
   network: StellarNetwork,
   passphrase: string
-): Promise<SorobanRpc.Api.GetTransactionResponse> {
+): Promise<{ txResult: SorobanRpc.Api.GetTransactionResponse; hash: string }> {
   if (SorobanRpc.Api.isSimulationError(simResult)) {
     throw new Error(`Transaction simulation failed: ${simResult.error}`)
   }
@@ -219,7 +226,7 @@ async function signAndSubmitTransaction(
     throw new Error(`On-chain transaction execution failed (hash: ${sendResult.hash})`)
   }
 
-  return txResult
+  return { txResult, hash: sendResult.hash }
 }
 
 /**
@@ -233,7 +240,7 @@ export async function deployContract(
   graph: { nodes: Node[]; edges: Edge[] },
   network?: StellarNetwork,
   onProgress?: (stage: string) => void
-): Promise<string> {
+): Promise<DeploymentResult> {
   const targetNetwork: StellarNetwork =
     network || (process.env.NEXT_PUBLIC_STELLAR_NETWORK as StellarNetwork) || "testnet"
   const config = getNetworkConfig(targetNetwork)
@@ -307,7 +314,7 @@ export async function deployContract(
     config.passphrase
   )
 
-  const txReturnValue = (createTxResult as any).returnValue
+  const txReturnValue = (createTxResult.txResult as any).returnValue
   if (!contractId && txReturnValue) {
     try {
       contractId = Address.fromScVal(txReturnValue).toString()
@@ -319,5 +326,10 @@ export async function deployContract(
   const finalContractId = contractId ?? `C${wasmHashHex.slice(0, 55).toUpperCase()}`
 
   onProgress?.("Contract deployed successfully!")
-  return `Contract deployed successfully! Contract ID: ${finalContractId}`
+  return {
+    message: `Contract deployed successfully! Contract ID: ${finalContractId}`,
+    contractId: finalContractId,
+    txHash: createTxResult.hash,
+    network: targetNetwork,
+  }
 }

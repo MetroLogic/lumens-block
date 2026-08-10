@@ -32,6 +32,7 @@ import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
+import DeploymentHistory from "./DeploymentHistory"
 import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -56,6 +57,7 @@ export default function BlockEditor() {
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [isCodePreviewOpen, setIsCodePreviewOpen] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
   const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
@@ -305,6 +307,7 @@ export default function BlockEditor() {
       <Toolbar
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenTemplates={() => setIsTemplatesOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
         onAddBlock={onAddBlock}
         onAutoLayout={handleAutoLayout}
         onNew={handleNew}
@@ -377,6 +380,7 @@ export default function BlockEditor() {
         nodes={nodes}
         edges={edges}
       />
+      <DeploymentHistory isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} />
 
       {toast && (
         <div
