@@ -9,6 +9,7 @@ import ReactFlow, {
   useNodesState,
   type Connection,
   type ReactFlowInstance,
+  type OnSelectionChangeParams,
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { useCallback, useEffect, useState } from "react"
@@ -63,6 +64,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const [selectedCount, setSelectedCount] = useState(0)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -234,6 +236,20 @@ export default function BlockEditor() {
     }, 300)
   }, [edges, setNodes])
 
+  const onSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
+      setSelectedCount(selectedNodes.length)
+    },
+    []
+  )
+
+  const handleDeleteSelected = useCallback(() => {
+    setNodes((nds) => nds.filter((n) => !n.selected))
+    setEdges((eds) => eds.filter((e) => !e.selected))
+    setSelectedCount(0)
+    showToast("Deleted selected items.", "success")
+  }, [setNodes, setEdges, showToast])
+
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
   useEffect(() => {
@@ -310,6 +326,8 @@ export default function BlockEditor() {
         onNew={handleNew}
         onExport={handleExport}
         onImport={(file) => void handleImport(file)}
+        onDeleteSelected={handleDeleteSelected}
+        selectedCount={selectedCount}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
@@ -323,6 +341,8 @@ export default function BlockEditor() {
           onConnect={onConnect}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
+          deleteKeyCode={["Backspace", "Delete"]}
+          onSelectionChange={onSelectionChange}
           fitView
         >
           <Background color={theme === "dark" ? "#475569" : "#94a3b8"} />

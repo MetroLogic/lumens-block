@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react"
+import { Download, FilePlus2, FolderOpen, Moon, Sun, Trash2, Upload } from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
@@ -14,6 +14,8 @@ interface Props {
   onNew?: () => void
   onExport?: () => void
   onImport?: (file: File) => void
+  onDeleteSelected?: () => void
+  selectedCount?: number
 }
 
 export default function Toolbar({
@@ -24,6 +26,8 @@ export default function Toolbar({
   onNew,
   onExport,
   onImport,
+  onDeleteSelected,
+  selectedCount = 0,
 }: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -145,6 +149,24 @@ export default function Toolbar({
                   onChange={handleImportChange}
                 />
               </>
+            )}
+          </div>
+        )}
+        {(onDeleteSelected || selectedCount > 0) && (
+          <div className="flex items-center gap-1.5">
+            {selectedCount > 1 && (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
+                {selectedCount} selected
+              </span>
+            )}
+            {onDeleteSelected && selectedCount > 0 && (
+              <button
+                onClick={onDeleteSelected}
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/60"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
             )}
           </div>
         )}
