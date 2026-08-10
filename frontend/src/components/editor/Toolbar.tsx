@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react"
+import { Download, FilePlus2, FolderOpen, Moon, Share2, Sun, Upload } from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
@@ -14,6 +14,8 @@ interface Props {
   onNew?: () => void
   onExport?: () => void
   onImport?: (file: File) => void
+  onShare?: () => void
+  readOnly?: boolean
 }
 
 export default function Toolbar({
@@ -24,6 +26,8 @@ export default function Toolbar({
   onNew,
   onExport,
   onImport,
+  onShare,
+  readOnly = false,
 }: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -88,12 +92,16 @@ export default function Toolbar({
           ref={(el) => {
             itemRefs.current[index] = el
           }}
-          draggable
-          tabIndex={0}
+          draggable={!readOnly}
+          tabIndex={readOnly ? -1 : 0}
           data-testid={`toolbar-block-${type.toLowerCase()}`}
           onDragStart={(e) => onDragStart(e, type)}
           onKeyDown={(e) => handleKeyDown(e, index, type)}
-          className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+          className={`rounded border px-3 py-1.5 text-sm ${
+            readOnly
+              ? "cursor-default border-slate-100 text-slate-400 dark:border-slate-700 dark:text-slate-500"
+              : "cursor-grab border-slate-200 text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+          }`}
         >
           {type}
         </div>
@@ -103,7 +111,8 @@ export default function Toolbar({
         {onAutoLayout && (
           <button
             onClick={onAutoLayout}
-            className="w-full rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+            disabled={readOnly}
+            className="w-full rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:hover:bg-transparent"
           >
             Auto Layout
           </button>
@@ -113,7 +122,8 @@ export default function Toolbar({
             {onNew && (
               <button
                 onClick={onNew}
-                className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+                disabled={readOnly}
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700 dark:disabled:hover:bg-transparent"
               >
                 <FilePlus2 size={14} />
                 New
@@ -128,7 +138,16 @@ export default function Toolbar({
                 Export JSON
               </button>
             )}
-            {onImport && (
+            {onShare && (
+              <button
+                onClick={onShare}
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                <Share2 size={14} />
+                Share Graph
+              </button>
+            )}
+            {onImport && !readOnly && (
               <>
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -148,7 +167,7 @@ export default function Toolbar({
             )}
           </div>
         )}
-        {onOpenTemplates && (
+        {onOpenTemplates && !readOnly && (
           <button
             onClick={onOpenTemplates}
             className="flex w-full items-center justify-center gap-1.5 rounded bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
