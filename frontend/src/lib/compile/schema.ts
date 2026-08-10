@@ -75,10 +75,24 @@ export interface BlockParameters {
   token?: string
   /** Structured asset selection for Transfer blocks (XLM or custom SAC) */
   asset?: TransferAsset
+  /** Transfer amount for Transfer blocks */
+  amount?: string
+  /** Recipient Stellar address for Transfer blocks */
+  recipient?: string
   /** Storage key for Storage blocks */
   storageKey?: string
+  /** Storage value type for Storage blocks */
+  valueType?: "string" | "number" | "bool"
   /** Event name for Event blocks */
   eventName?: string
+  /** Event payload fields for Event blocks */
+  payloadFields?: { name: string; valueType?: "string" | "number" | "bool" }[]
+  /** Required signers count for Auth blocks */
+  requiredSigners?: string
+  /** Allowed signer addresses for Auth blocks */
+  allowedAddresses?: string[]
+  /** Every non-default block can carry an optional user-facing label */
+  label?: string
   /** Condition expression label for Condition blocks (legacy free-text, kept for backward compat) */
   condition?: string
   /**
