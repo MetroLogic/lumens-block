@@ -32,6 +32,7 @@ import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
+import CommandPalette from "./CommandPalette"
 import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -55,6 +56,7 @@ export default function BlockEditor() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [isCodePreviewOpen, setIsCodePreviewOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
@@ -239,6 +241,10 @@ export default function BlockEditor() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        setIsCommandPaletteOpen((open) => !open)
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -366,6 +372,12 @@ export default function BlockEditor() {
       </div>
 
       {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
+      {isCommandPaletteOpen && (
+        <CommandPalette
+          onSelect={onAddBlock}
+          onClose={() => setIsCommandPaletteOpen(false)}
+        />
+      )}
       <TemplatesModal
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}
