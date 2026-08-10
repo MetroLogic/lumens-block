@@ -36,6 +36,7 @@ import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
+import { useToast } from "./ToastProvider"
 
 const nodeTypes = {
   Condition: BlockNode,
@@ -51,7 +52,6 @@ export default function BlockEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(EMPTY_GRAPH_NODES)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [hydrated, setHydrated] = useState(false)
-  const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
@@ -64,9 +64,7 @@ export default function BlockEditor() {
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
 
-  const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
-    setToast({ message, type })
-  }, [])
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast()
 
   const applyGraph = useCallback(
     (graph: ContractGraph) => {
@@ -161,7 +159,8 @@ export default function BlockEditor() {
     setOverrideTestFailure(false)
     clearGraphStorage()
     saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
-  }, [setNodes, setEdges])
+    toastInfo("Canvas cleared. Started a new graph.")
+  }, [setNodes, setEdges, toastInfo])
 
   const handleExport = useCallback(() => {
     downloadGraphJson(toContractGraph(nodes, edges))
@@ -173,16 +172,16 @@ export default function BlockEditor() {
         const text = await file.text()
         const result = parseImportedGraphJson(text)
         if (!result.ok) {
-          showToast(result.error, "error")
+          toastError(result.error)
           return
         }
         applyGraph(result.graph)
-        showToast("Graph imported successfully.", "success")
+        toastSuccess("Graph imported successfully.")
       } catch {
-        showToast("Could not read the selected file.", "error")
+        toastError("Could not read the selected file.")
       }
     },
-    [applyGraph, showToast]
+    [applyGraph, toastError, toastSuccess]
   )
 
   const onAddBlock = useCallback(
@@ -269,13 +268,6 @@ export default function BlockEditor() {
 
     return () => window.clearTimeout(timer)
   }, [nodes, edges, hydrated])
-
-  // Auto-dismiss toast
-  useEffect(() => {
-    if (!toast) return
-    const timer = window.setTimeout(() => setToast(null), 4000)
-    return () => window.clearTimeout(timer)
-  }, [toast])
 
   return (
     <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
@@ -377,19 +369,6 @@ export default function BlockEditor() {
         nodes={nodes}
         edges={edges}
       />
-
-      {toast && (
-        <div
-          role="status"
-          className={`absolute left-1/2 top-4 z-30 max-w-md -translate-x-1/2 rounded-lg border px-4 py-2 text-sm shadow-lg ${
-            toast.type === "error"
-              ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
-              : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-200"
-          }`}
-        >
-          {toast.message}
-        </div>
-      )}
 
       {walletError && (
         <div className="absolute bottom-20 right-6 z-20 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow">

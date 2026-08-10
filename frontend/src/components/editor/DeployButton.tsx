@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
 import { CompileContractError, deployContract, estimateDeploymentFee, type StellarNetwork } from "@/lib/stellar/deploy"
+import { useToast } from "./ToastProvider"
 
 interface Props {
   nodes: Node[]
@@ -21,6 +22,7 @@ export default function DeployButton({
   walletAddress,
   walletBalance,
 }: Props) {
+  const { success: toastSuccess, error: toastError } = useToast()
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
   const [message, setMessage] = useState<string | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
@@ -86,9 +88,13 @@ export default function DeployButton({
       })
       setStatus("success")
       setMessage(result)
+      toastSuccess(`${result}`)
       setIsConfirmOpen(false)
     } catch (err) {
       setStatus("error")
+      const errMsg =
+        err instanceof Error ? err.message : "Deployment failed. Please try again."
+      toastError(errMsg)
       if (err instanceof CompileContractError) {
         setMessage(err.message)
       } else if (err instanceof Error) {
