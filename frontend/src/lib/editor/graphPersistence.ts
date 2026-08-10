@@ -35,6 +35,7 @@ export function toReactFlowGraph(graph: ContractGraph): { nodes: Node[]; edges: 
       target: edge.target,
       sourceHandle: edge.sourceHandle ?? undefined,
       targetHandle: edge.targetHandle ?? undefined,
+      ...(edge.data?.label ? { data: { label: edge.data.label } } : {}),
     })),
   }
 }

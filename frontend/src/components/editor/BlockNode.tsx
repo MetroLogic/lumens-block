@@ -202,12 +202,39 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
         </div>
       )}
 
-      {/* Source handle on bottom */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
-      />
+      {/* Source handles */}
+      {type === "Condition" || type === "Transfer" ? (
+        <div className="relative">
+          {/* Left handle */}
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id={type === "Condition" ? "true" : "success"}
+            className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
+            style={{ left: "30%" }}
+          />
+          <span className="absolute bottom-0 left-0 translate-y-5 text-[9px] font-semibold text-gray-500 dark:text-gray-400 select-none">
+            {type === "Condition" ? "TRUE" : "SUCCESS"}
+          </span>
+          {/* Right handle */}
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id={type === "Condition" ? "false" : "failure"}
+            className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
+            style={{ left: "70%" }}
+          />
+          <span className="absolute bottom-0 right-0 translate-y-5 text-[9px] font-semibold text-gray-500 dark:text-gray-400 select-none">
+            {type === "Condition" ? "FALSE" : "FAILURE"}
+          </span>
+        </div>
+      ) : (
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
+        />
+      )}
     </div>
   )
 }
