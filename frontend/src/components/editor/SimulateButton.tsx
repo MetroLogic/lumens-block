@@ -47,7 +47,7 @@ export default function SimulateButton({ nodes, edges }: Props) {
     <>
       <button
         onClick={handleOpen}
-        className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-violet-700 transition-colors"
+        className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400 transition-colors"
         aria-label="Simulate contract"
         title="Simulate contract without submitting to chain"
       >

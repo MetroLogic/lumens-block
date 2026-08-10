@@ -16,7 +16,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light")
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") as Theme | null
+    const savedTheme = localStorage.getItem("lumens-block:theme") as Theme | null
     let initialTheme: Theme = "light"
 
     if (savedTheme === "dark" || savedTheme === "light") {
@@ -35,7 +35,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme)
-    localStorage.setItem("theme", newTheme)
+    localStorage.setItem("lumens-block:theme", newTheme)
     if (newTheme === "dark") {
       document.documentElement.classList.add("dark")
     } else {
