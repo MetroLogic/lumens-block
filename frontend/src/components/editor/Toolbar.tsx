@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react"
+import { CornerDownLeft, CornerUpRight, Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
@@ -14,6 +14,10 @@ interface Props {
   onNew?: () => void
   onExport?: () => void
   onImport?: (file: File) => void
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
 }
 
 export default function Toolbar({
@@ -24,6 +28,10 @@ export default function Toolbar({
   onNew,
   onExport,
   onImport,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -107,6 +115,30 @@ export default function Toolbar({
           >
             Auto Layout
           </button>
+        )}
+        {(onUndo || onRedo) && (
+          <div className="flex gap-1">
+            <button
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z)"
+              aria-label="Undo"
+              className="flex flex-1 items-center justify-center gap-1 rounded border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <CornerDownLeft size={13} />
+              Undo
+            </button>
+            <button
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Shift+Z)"
+              aria-label="Redo"
+              className="flex flex-1 items-center justify-center gap-1 rounded border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <CornerUpRight size={13} />
+              Redo
+            </button>
+          </div>
         )}
         {(onNew || onExport || onImport) && (
           <div className="flex flex-col gap-1.5">
