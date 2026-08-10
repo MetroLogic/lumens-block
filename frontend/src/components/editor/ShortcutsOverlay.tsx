@@ -6,13 +6,13 @@ const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform
 const mod = isMac ? "⌘" : "Ctrl"
 
 const SHORTCUTS = [
-  { keys: `${mod}+K`, description: "Open block palette" },
+  { keys: `${mod}+S`, description: "Export graph to JSON" },
   { keys: `${mod}+Z`, description: "Undo" },
-  { keys: `${mod}+Y`, description: "Redo" },
+  { keys: `${mod}+Shift+Z`, description: "Redo" },
+  { keys: `${mod}+A`, description: "Select all nodes" },
   { keys: "Delete / Backspace", description: "Remove selected block" },
-  { keys: "Escape", description: "Close panel" },
-  { keys: "Fit View", description: "Fit canvas to screen" },
-  { keys: "?", description: "Toggle this overlay" },
+  { keys: "Escape", description: "Deselect all / Close panel" },
+  { keys: "?", description: "Open keyboard shortcuts" },
 ]
 
 interface Props {
@@ -22,7 +22,7 @@ interface Props {
 export default function ShortcutsOverlay({ onClose }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // Focus trap + close on Escape
+  // Focus the dialog + close on Escape
   useEffect(() => {
     dialogRef.current?.focus()
     const onKey = (e: KeyboardEvent) => {

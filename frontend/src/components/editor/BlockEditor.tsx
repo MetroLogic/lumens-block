@@ -11,7 +11,7 @@ import ReactFlow, {
   type ReactFlowInstance,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { applyAutoLayout } from "@/lib/layout"
 import {
   EMPTY_GRAPH_NODES,
@@ -46,6 +46,8 @@ const nodeTypes = {
   default: BlockNode,
 }
 
+const MAX_HISTORY = 50
+
 export default function BlockEditor() {
   const { theme } = useTheme()
   const [nodes, setNodes, onNodesChange] = useNodesState(EMPTY_GRAPH_NODES)
@@ -63,6 +65,22 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+
+  // Undo/redo history
+  const undoStack = useRef<{ nodes: typeof nodes; edges: typeof edges }[]>([])
+  const redoStack = useRef<{ nodes: typeof nodes; edges: typeof edges }[]>([])
+
+  const pushSnapshot = useCallback(
+    (currentNodes: typeof nodes, currentEdges: typeof edges) => {
+      undoStack.current.push({ nodes: structuredClone(currentNodes), edges: structuredClone(currentEdges) })
+      if (undoStack.current.length > MAX_HISTORY) {
+        undoStack.current.shift()
+      }
+      // Clear redo stack on new action
+      redoStack.current = []
+    },
+    []
+  )
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -155,13 +173,14 @@ export default function BlockEditor() {
     )
     if (!confirmed) return
 
+    pushSnapshot(nodes, edges)
     setNodes(EMPTY_GRAPH_NODES)
     setEdges([])
     setTestResults(null)
     setOverrideTestFailure(false)
     clearGraphStorage()
     saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
-  }, [setNodes, setEdges])
+  }, [setNodes, setEdges, nodes, edges, pushSnapshot])
 
   const handleExport = useCallback(() => {
     downloadGraphJson(toContractGraph(nodes, edges))
@@ -236,13 +255,86 @@ export default function BlockEditor() {
 
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
+  // Global keyboard shortcuts
   useEffect(() => {
+    const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform)
+    const modKey = isMac ? "metaKey" : "ctrlKey"
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+      // Don't intercept when typing in input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
+
+      const mod = e[modKey]
+
+      if (e.key === "?" && !shortcutsOpen) {
+        e.preventDefault()
+        setShortcutsOpen(true)
+        return
+      }
+
+      if (e.key === "Escape") {
+        // Close overlays first
+        if (shortcutsOpen) {
+          setShortcutsOpen(false)
+          return
+        }
+        if (isTemplatesOpen) {
+          setIsTemplatesOpen(false)
+          return
+        }
+        // Deselect all nodes/edges
+        setNodes((nds) => nds.map((n) => ({ ...n, selected: false })))
+        setEdges((eds) => eds.map((e) => ({ ...e, selected: false })))
+        return
+      }
+
+      // Ctrl/Cmd + S → Export
+      if (mod && e.key === "s") {
+        e.preventDefault()
+        handleExport()
+        return
+      }
+
+      // Ctrl/Cmd + Z → Undo
+      if (mod && !e.shiftKey && e.key === "z") {
+        e.preventDefault()
+        const prev = undoStack.current.pop()
+        if (prev) {
+          redoStack.current.push({ nodes: structuredClone(nodes), edges: structuredClone(edges) })
+          setNodes(prev.nodes)
+          setEdges(prev.edges)
+        } else {
+          showToast("Nothing to undo", "error")
+        }
+        return
+      }
+
+      // Ctrl/Cmd + Shift + Z → Redo
+      if (mod && e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault()
+        const next = redoStack.current.pop()
+        if (next) {
+          undoStack.current.push({ nodes: structuredClone(nodes), edges: structuredClone(edges) })
+          setNodes(next.nodes)
+          setEdges(next.edges)
+        } else {
+          showToast("Nothing to redo", "error")
+        }
+        return
+      }
+
+      // Ctrl/Cmd + A → Select all nodes
+      if (mod && e.key === "a") {
+        e.preventDefault()
+        setNodes((nds) => nds.map((n) => ({ ...n, selected: true })))
+        return
+      }
     }
+
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [shortcutsOpen])
+  }, [shortcutsOpen, isTemplatesOpen, shortcutsOpen, handleExport, nodes, edges, setNodes, setEdges, showToast, redoStack, undoStack])
 
   useEffect(() => {
     void loadWalletInfo()
@@ -259,7 +351,7 @@ export default function BlockEditor() {
     setHydrated(true)
   }, [setNodes, setEdges])
 
-  // Debounced auto-save
+  // Debounced auto-save + push history snapshot
   useEffect(() => {
     if (!hydrated) return
 
@@ -269,6 +361,15 @@ export default function BlockEditor() {
 
     return () => window.clearTimeout(timer)
   }, [nodes, edges, hydrated])
+
+  // Push snapshot on nodes/edges change (after auto-save debounce)
+  useEffect(() => {
+    if (!hydrated) return
+    const timer = window.setTimeout(() => {
+      pushSnapshot(nodes, edges)
+    }, GRAPH_AUTOSAVE_DEBOUNCE_MS + 50)
+    return () => window.clearTimeout(timer)
+  }, [nodes, edges, hydrated, pushSnapshot])
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -323,6 +424,7 @@ export default function BlockEditor() {
           onConnect={onConnect}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
+          deleteKeyCode={["Backspace", "Delete"]}
           fitView
         >
           <Background color={theme === "dark" ? "#475569" : "#94a3b8"} />
