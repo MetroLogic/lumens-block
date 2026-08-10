@@ -24,6 +24,7 @@ import {
   toContractGraph,
   toReactFlowGraph,
 } from "@/lib/editor/graphPersistence"
+import { checkConnection } from "@/lib/editor/connectionRules"
 import Toolbar from "./Toolbar"
 import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
@@ -82,6 +83,18 @@ export default function BlockEditor() {
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
+  )
+
+  const isValidConnection = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return false
+      const result = checkConnection(connection.source, connection.target, nodes, edges)
+      if (!result.valid) {
+        showToast(result.reason ?? "Invalid connection", "error")
+      }
+      return result.valid
+    },
+    [nodes, edges, showToast]
   )
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -321,6 +334,7 @@ export default function BlockEditor() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          isValidConnection={isValidConnection}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
           fitView
