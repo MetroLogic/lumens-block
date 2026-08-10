@@ -32,6 +32,8 @@ import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
+import LabeledEdge from "./edges/LabeledEdge"
+import { EdgeLabelContext, type EdgeLabelContextValue } from "./edges/EdgeLabelContext"
 import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -44,6 +46,10 @@ const nodeTypes = {
   Event: BlockNode,
   Auth: BlockNode,
   default: BlockNode,
+}
+
+const edgeTypes = {
+  default: LabeledEdge,
 }
 
 export default function BlockEditor() {
@@ -63,6 +69,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -80,7 +87,20 @@ export default function BlockEditor() {
   )
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
+    (connection: Connection) => {
+      // Auto-set edge label from named source handle
+      const label =
+        connection.sourceHandle && typeof connection.sourceHandle === "string"
+          ? connection.sourceHandle
+          : undefined
+      setEdges((eds) =>
+        addEdge(
+          { ...connection, ...(label ? { data: { label } } : {}) },
+          eds
+        )
+      )
+      setEditingEdgeId(null)
+    },
     [setEdges]
   )
 
@@ -234,6 +254,39 @@ export default function BlockEditor() {
     }, 300)
   }, [edges, setNodes])
 
+  const onEdgeClick = useCallback((_: unknown, edge: { id: string }) => {
+    setEditingEdgeId(edge.id)
+  }, [])
+
+  const beginEditEdge = useCallback((edgeId: string) => {
+    setEditingEdgeId(edgeId)
+  }, [])
+
+  const cancelEditEdge = useCallback(() => {
+    setEditingEdgeId(null)
+  }, [])
+
+  const commitEdgeLabel = useCallback(
+    (edgeId: string, label: string) => {
+      setEdges((eds) =>
+        eds.map((e) =>
+          e.id === edgeId
+            ? { ...e, data: { ...(e.data ?? {}), label: label.trim() || undefined } }
+            : e
+        )
+      )
+      setEditingEdgeId(null)
+    },
+    [setEdges]
+  )
+
+  const edgeLabelContextValue: EdgeLabelContextValue = {
+    editingEdgeId,
+    beginEdit: beginEditEdge,
+    commitLabel: commitEdgeLabel,
+    cancelEdit: cancelEditEdge,
+  }
+
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
   useEffect(() => {
@@ -315,20 +368,24 @@ export default function BlockEditor() {
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
 
       <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onInit={setReactFlowInstance}
-          nodeTypes={nodeTypes}
-          fitView
-        >
+        <EdgeLabelContext.Provider value={edgeLabelContextValue}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onEdgeClick={onEdgeClick}
+            onInit={setReactFlowInstance}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+          >
           <Background color={theme === "dark" ? "#475569" : "#94a3b8"} />
           <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-200" />
           <MiniMap className="dark:bg-slate-800 dark:border-slate-700" maskColor={theme === "dark" ? "rgba(15, 23, 42, 0.7)" : "rgba(240, 242, 245, 0.7)"} />
         </ReactFlow>
+        </EdgeLabelContext.Provider>
       </div>
 
       <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">

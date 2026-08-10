@@ -105,6 +105,10 @@ export interface ContractGraphEdge {
   target: string
   sourceHandle?: string | null
   targetHandle?: string | null
+  /** Optional edge metadata (e.g. branch label, style). */
+  data?: {
+    label?: string
+  }
 }
 
 export interface ContractGraph {

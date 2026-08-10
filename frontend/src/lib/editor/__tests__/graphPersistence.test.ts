@@ -65,6 +65,44 @@ describe("toContractGraph / toReactFlowGraph round-trip", () => {
       transferGraph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))
     )
   })
+
+  it("preserves edge labels through round-trip", () => {
+    const graphWithLabels: ContractGraph = {
+      ...transferGraph,
+      edges: [
+        { id: "e1", source: "1", target: "2", sourceHandle: "true", data: { label: "true" } },
+        { id: "e2", source: "2", target: "3", sourceHandle: "success", data: { label: "success" } },
+        { id: "e3", source: "3", target: "4", data: {} },
+      ],
+    }
+    const { nodes, edges } = toReactFlowGraph(graphWithLabels)
+    const exported = toContractGraph(nodes, edges)
+
+    expect(exported.edges[0].data?.label).toBe("true")
+    expect(exported.edges[1].data?.label).toBe("success")
+    // Edge without label should not have data
+    expect(exported.edges[2].data).toBeUndefined()
+  })
+
+  it("rejects invalid edge data in validateContractGraph", () => {
+    const result = validateContractGraph(
+      {
+        ...transferGraph,
+        edges: [
+          { id: "e1", source: "1", target: "2", sourceHandle: "true", data: { label: "valid" } },
+          { id: "e2", source: "2", target: "3", data: { label: 42 } },
+        ],
+      },
+      undefined,
+      { skipStructureValidation: true }
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      // label=42 (number) should be dropped — only string labels are valid
+      expect(result.graph.edges[0].data?.label).toBe("valid")
+      expect(result.graph.edges[1].data).toBeUndefined()
+    }
+  })
 })
 
 describe("validateContractGraph position + skipStructureValidation", () => {
