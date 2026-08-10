@@ -9,6 +9,7 @@ import ReactFlow, {
   useNodesState,
   type Connection,
   type ReactFlowInstance,
+  type Node,
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { useCallback, useEffect, useState } from "react"
@@ -32,6 +33,7 @@ import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
+import ConfigPanel from "./ConfigPanel"
 import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
@@ -56,6 +58,7 @@ export default function BlockEditor() {
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
   const [isCodePreviewOpen, setIsCodePreviewOpen] = useState(false)
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
   const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
@@ -83,6 +86,17 @@ export default function BlockEditor() {
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
     [setEdges]
   )
+
+  const onNodeClick = useCallback(
+    (_event: React.MouseEvent, node: Node) => {
+      setSelectedNode(node)
+    },
+    []
+  )
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNode(null)
+  }, [])
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -321,6 +335,8 @@ export default function BlockEditor() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
           fitView
@@ -377,6 +393,13 @@ export default function BlockEditor() {
         nodes={nodes}
         edges={edges}
       />
+
+      {selectedNode && (
+        <ConfigPanel
+          selectedNode={selectedNode}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
 
       {toast && (
         <div
