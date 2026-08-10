@@ -33,6 +33,7 @@ import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
 import { useTheme } from "./ThemeContext"
+import { useHistory } from "@/lib/hooks/useHistory"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -64,12 +65,17 @@ export default function BlockEditor() {
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
 
+  const emptyGraph = toContractGraph(EMPTY_GRAPH_NODES, [])
+  const { undo, redo, canUndo, canRedo, push, clear, currentSnapshot } = useHistory(emptyGraph)
+  const skipHistoryRef = useRef(false)
+
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
   }, [])
 
   const applyGraph = useCallback(
     (graph: ContractGraph) => {
+      skipHistoryRef.current = true
       const { nodes: nextNodes, edges: nextEdges } = toReactFlowGraph(graph)
       setNodes(nextNodes)
       setEdges(nextEdges)
@@ -155,13 +161,15 @@ export default function BlockEditor() {
     )
     if (!confirmed) return
 
+    const emptyGraph = toContractGraph(EMPTY_GRAPH_NODES, [])
     setNodes(EMPTY_GRAPH_NODES)
     setEdges([])
     setTestResults(null)
     setOverrideTestFailure(false)
     clearGraphStorage()
-    saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
-  }, [setNodes, setEdges])
+    saveGraphToStorage(emptyGraph)
+    clear(emptyGraph)
+  }, [setNodes, setEdges, clear])
 
   const handleExport = useCallback(() => {
     downloadGraphJson(toContractGraph(nodes, edges))
@@ -236,13 +244,34 @@ export default function BlockEditor() {
 
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
+  const handleUndo = useCallback(() => {
+    skipHistoryRef.current = true
+    undo()
+  }, [undo])
+
+  const handleRedo = useCallback(() => {
+    skipHistoryRef.current = true
+    redo()
+  }, [redo])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault()
+        handleUndo()
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "z" && e.shiftKey) {
+        e.preventDefault()
+        handleRedo()
+      } else if ((e.metaKey || e.ctrlKey) && e.key === "y") {
+        e.preventDefault()
+        handleRedo()
+      } else if (e.key === "?" && !shortcutsOpen) {
+        setShortcutsOpen(true)
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [shortcutsOpen])
+  }, [shortcutsOpen, handleUndo, handleRedo])
 
   useEffect(() => {
     void loadWalletInfo()
@@ -259,16 +288,30 @@ export default function BlockEditor() {
     setHydrated(true)
   }, [setNodes, setEdges])
 
-  // Debounced auto-save
+  // Apply undo/redo snapshot to the canvas
+  useEffect(() => {
+    if (!hydrated) return
+    // Ensure this is a programmatic restore (not the initial push)
+    const { nodes: restoredNodes, edges: restoredEdges } = toReactFlowGraph(currentSnapshot)
+    setNodes(restoredNodes)
+    setEdges(restoredEdges)
+  }, [currentSnapshot, hydrated, setNodes, setEdges])
+
+  // Debounced auto-save + push history snapshot
   useEffect(() => {
     if (!hydrated) return
 
     const timer = window.setTimeout(() => {
-      saveGraphToStorage(toContractGraph(nodes, edges))
+      const graph = toContractGraph(nodes, edges)
+      saveGraphToStorage(graph)
+      if (!skipHistoryRef.current) {
+        push(graph)
+      }
+      skipHistoryRef.current = false
     }, GRAPH_AUTOSAVE_DEBOUNCE_MS)
 
     return () => window.clearTimeout(timer)
-  }, [nodes, edges, hydrated])
+  }, [nodes, edges, hydrated, push])
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -310,6 +353,10 @@ export default function BlockEditor() {
         onNew={handleNew}
         onExport={handleExport}
         onImport={(file) => void handleImport(file)}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
