@@ -30,6 +30,11 @@ import DeployButton from "./DeployButton"
 import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
 import BlockNode from "./BlockNode"
+import ConditionNode from "./nodes/ConditionNode"
+import TransferNode from "./nodes/TransferNode"
+import StorageNode from "./nodes/StorageNode"
+import EventNode from "./nodes/EventNode"
+import AuthNode from "./nodes/AuthNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
 import { useTheme } from "./ThemeContext"
@@ -38,11 +43,11 @@ import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
 
 const nodeTypes = {
-  Condition: BlockNode,
-  Transfer: BlockNode,
-  Storage: BlockNode,
-  Event: BlockNode,
-  Auth: BlockNode,
+  Condition: ConditionNode,
+  Transfer: TransferNode,
+  Storage: StorageNode,
+  Event: EventNode,
+  Auth: AuthNode,
   default: BlockNode,
 }
 
