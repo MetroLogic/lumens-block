@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
 import { toContractGraph } from "@/lib/editor/graphPersistence"
 import { compileGraph } from "@/lib/compiler"
+import { useToast } from "./ToastProvider"
 
 interface Props {
   isOpen: boolean
@@ -14,6 +15,7 @@ interface Props {
 
 export default function CodePreviewModal({ isOpen, onClose, nodes, edges }: Props) {
   const [copied, setCopied] = useState(false)
+  const { success: toastSuccess } = useToast()
 
   const { code, error, warnings } = useMemo(() => {
     if (!isOpen) return { code: "", error: null, warnings: [] }
@@ -40,6 +42,7 @@ export default function CodePreviewModal({ isOpen, onClose, nodes, edges }: Prop
     try {
       await navigator.clipboard.writeText(code)
       setCopied(true)
+      toastSuccess("Code copied to clipboard")
       setTimeout(() => setCopied(false), 2000)
     } catch {
       // Fallback if clipboard API is restricted
