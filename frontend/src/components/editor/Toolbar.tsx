@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react"
+import { Download, FilePlus2, FolderOpen, History, Moon, Sun, Upload } from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
@@ -9,6 +9,7 @@ const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
 interface Props {
   onOpenShortcuts?: () => void
   onOpenTemplates?: () => void
+  onOpenHistory?: () => void
   onAddBlock?: (type: string) => void
   onAutoLayout?: () => void
   onNew?: () => void
@@ -19,6 +20,7 @@ interface Props {
 export default function Toolbar({
   onOpenShortcuts,
   onOpenTemplates,
+  onOpenHistory,
   onAddBlock,
   onAutoLayout,
   onNew,
@@ -155,6 +157,15 @@ export default function Toolbar({
           >
             <FolderOpen size={14} />
             Templates
+          </button>
+        )}
+        {onOpenHistory && (
+          <button
+            onClick={onOpenHistory}
+            className="flex w-full items-center justify-center gap-1.5 rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            <History size={14} />
+            History
           </button>
         )}
       </div>
