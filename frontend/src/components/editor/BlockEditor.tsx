@@ -17,8 +17,10 @@ import {
   EMPTY_GRAPH_NODES,
   GRAPH_AUTOSAVE_DEBOUNCE_MS,
   clearGraphStorage,
+  copyShareUrlToClipboard,
   downloadGraphJson,
   loadGraphFromStorage,
+  loadGraphFromUrlParam,
   parseImportedGraphJson,
   saveGraphToStorage,
   toContractGraph,
@@ -63,6 +65,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const [isReadOnly, setIsReadOnly] = useState(false)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -185,6 +188,16 @@ export default function BlockEditor() {
     [applyGraph, showToast]
   )
 
+  const handleShare = useCallback(() => {
+    const graph = toContractGraph(nodes, edges)
+    const url = copyShareUrlToClipboard(graph)
+    if (url) {
+      showToast("Share URL copied to clipboard!", "success")
+    } else {
+      showToast("Failed to copy share URL.", "error")
+    }
+  }, [nodes, edges, showToast])
+
   const onAddBlock = useCallback(
     (type: string) => {
       if (!reactFlowInstance) return
@@ -248,20 +261,28 @@ export default function BlockEditor() {
     void loadWalletInfo()
   }, [loadWalletInfo])
 
-  // Restore graph from localStorage once on mount
+  // Restore graph from localStorage once on mount, or from URL param
   useEffect(() => {
-    const saved = loadGraphFromStorage()
-    if (saved) {
-      const { nodes: restoredNodes, edges: restoredEdges } = toReactFlowGraph(saved)
+    const urlGraph = loadGraphFromUrlParam()
+    if (urlGraph) {
+      const { nodes: restoredNodes, edges: restoredEdges } = toReactFlowGraph(urlGraph.graph)
       setNodes(restoredNodes)
       setEdges(restoredEdges)
+      setIsReadOnly(true)
+    } else {
+      const saved = loadGraphFromStorage()
+      if (saved) {
+        const { nodes: restoredNodes, edges: restoredEdges } = toReactFlowGraph(saved)
+        setNodes(restoredNodes)
+        setEdges(restoredEdges)
+      }
     }
     setHydrated(true)
   }, [setNodes, setEdges])
 
-  // Debounced auto-save
+  // Debounced auto-save (skip in read-only mode)
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || isReadOnly) return
 
     const timer = window.setTimeout(() => {
       saveGraphToStorage(toContractGraph(nodes, edges))
@@ -279,6 +300,11 @@ export default function BlockEditor() {
 
   return (
     <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
+      {isReadOnly && (
+        <div className="absolute left-1/2 top-4 z-30 -translate-x-1/2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-900 shadow-lg dark:border-blue-900 dark:bg-blue-950/80 dark:text-blue-200">
+          🔒 Read-only view — open the link directly to edit this graph
+        </div>
+      )}
       <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
         <select
           value={selectedNetwork}
@@ -310,6 +336,8 @@ export default function BlockEditor() {
         onNew={handleNew}
         onExport={handleExport}
         onImport={(file) => void handleImport(file)}
+        onShare={handleShare}
+        readOnly={isReadOnly}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
@@ -324,6 +352,10 @@ export default function BlockEditor() {
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
           fitView
+          nodesDraggable={!isReadOnly}
+          nodesConnectable={!isReadOnly}
+          elementsSelectable
+          deleteKeyCode={isReadOnly ? null : ["Backspace", "Delete"]}
         >
           <Background color={theme === "dark" ? "#475569" : "#94a3b8"} />
           <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-200" />

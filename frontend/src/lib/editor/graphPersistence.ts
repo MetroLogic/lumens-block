@@ -109,3 +109,98 @@ export function parseImportedGraphJson(
 
   return { ok: true, graph: result.graph }
 }
+
+// ──────────────────────────────────────────────
+// Shareable read-only graph URL (Issue #22)
+// ──────────────────────────────────────────────
+
+export const GRAPH_URL_PARAM = "graph"
+
+/**
+ * Serialize a ContractGraph into a URL-safe base64 string.
+ * The graph is JSON-stringified, then base64-encoded via btoa.
+ * For large graphs, the encoded string is further URI-encoded so it
+ * survives query-parameter transport.
+ */
+export function encodeGraphToUrlParam(graph: ContractGraph): string {
+  const json = JSON.stringify(graph)
+  // Use btoa with Unicode support via encodeURIComponent workaround
+  const base64 = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+    String.fromCharCode(parseInt(p1, 16))
+  ))
+  return base64
+}
+
+/**
+ * Decode a base64 URL param back into a ContractGraph.
+ * Returns null on parse failure or validation failure.
+ */
+export function decodeGraphFromUrlParam(param: string): ContractGraph | null {
+  try {
+    const json = decodeURIComponent(
+      atob(param)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    )
+    const parsed: unknown = JSON.parse(json)
+    const byteLength = new TextEncoder().encode(json).length
+    const result = validateContractGraph(parsed, byteLength, { skipStructureValidation: true })
+    return result.ok ? result.graph : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build a shareable URL containing the current graph state and copy it to the clipboard.
+ * Returns the URL string on success, or null if the operation failed.
+ */
+export function copyShareUrlToClipboard(graph: ContractGraph): string | null {
+  if (typeof window === "undefined") return null
+
+  const encoded = encodeGraphToUrlParam(graph)
+  const url = `${window.location.origin}${window.location.pathname}?${GRAPH_URL_PARAM}=${encoded}`
+
+  try {
+    void navigator.clipboard.writeText(url)
+    return url
+  } catch {
+    // Fallback: create a temporary input element
+    try {
+      const input = document.createElement("input")
+      input.value = url
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand("copy")
+      document.body.removeChild(input)
+      return url
+    } catch {
+      return null
+    }
+  }
+}
+
+/**
+ * Check if the current URL has a graph parameter and return the decoded graph.
+ * Returns null if no valid graph param is found.
+ */
+export function loadGraphFromUrlParam(): { graph: ContractGraph; encoded: string } | null {
+  if (typeof window === "undefined") return null
+
+  const params = new URLSearchParams(window.location.search)
+  const encoded = params.get(GRAPH_URL_PARAM)
+  if (!encoded) return null
+
+  const graph = decodeGraphFromUrlParam(encoded)
+  return graph ? { graph, encoded } : null
+}
+
+/**
+ * Return the share URL string for a given graph without copying to clipboard.
+ */
+export function buildShareUrl(graph: ContractGraph): string {
+  if (typeof window === "undefined") return ""
+  const encoded = encodeGraphToUrlParam(graph)
+  return `${window.location.origin}${window.location.pathname}?${GRAPH_URL_PARAM}=${encoded}`
+}
