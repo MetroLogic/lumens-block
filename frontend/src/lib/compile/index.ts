@@ -1,13 +1,20 @@
 export {
   BLOCK_TYPES,
+  CROSS_CONTRACT_ARG_SOURCES,
+  CROSS_CONTRACT_TYPES,
   MAX_EDGES,
   MAX_GRAPH_BYTES,
   MAX_NODES,
   isBlockType,
+  isCrossContractArgSource,
+  isCrossContractType,
 } from "./schema"
 export type {
   BlockParameters,
   BlockType,
+  CrossContractArg,
+  CrossContractArgSource,
+  CrossContractType,
   CompileError,
   CompileResult,
   CompileSuccess,
@@ -17,6 +24,13 @@ export type {
 } from "./schema"
 
 export { generateContractSource, getExecutionOrder, GENERATED_CARGO_TOML } from "./codegen"
+export {
+  crossContractClientName,
+  crossContractTargetParam,
+  crossContractTraitName,
+  getReturnBindings,
+  sanitizeRustIdent,
+} from "./crossContract"
 export type { CodegenResult } from "./codegen"
 
 export {

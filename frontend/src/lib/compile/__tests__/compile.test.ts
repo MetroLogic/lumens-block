@@ -113,3 +113,181 @@ describe("generateContractSource", () => {
     expect(source).toContain("token::Client::new(&env, &token).transfer")
   })
 })
+
+// ---------------------------------------------------------------------------
+// CrossContractCall block
+// ---------------------------------------------------------------------------
+
+const CONTRACT_ID = "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+
+function crossCallGraph(params: Record<string, unknown>, extraNodes: ContractGraph["nodes"] = [], extraEdges: ContractGraph["edges"] = []): ContractGraph {
+  return {
+    nodes: [
+      { id: "1", type: "default", data: { label: "Start" } },
+      { id: "2", type: "CrossContractCall", data: { label: "Stake Pool", params } },
+      ...extraNodes,
+    ],
+    edges: [{ id: "e1", source: "1", target: "2" }, ...extraEdges],
+  }
+}
+
+const stakeParams = {
+  targetContractId: CONTRACT_ID,
+  targetFunction: "stake",
+  targetArgs: [
+    { name: "caller", value: "caller", rustType: "Address", source: "invocationArg" },
+    { name: "amount", value: "amount", rustType: "i128", source: "invocationArg" },
+  ],
+  returnBinding: "stake_result",
+  returnType: "i128",
+}
+
+describe("validateGraphStructure — CrossContractCall", () => {
+  it("accepts a fully configured cross-contract call", () => {
+    expect(validateGraphStructure(crossCallGraph(stakeParams))).toBeNull()
+  })
+
+  it("rejects a call without a target contract address", () => {
+    const error = validateGraphStructure(crossCallGraph({ ...stakeParams, targetContractId: "" }))
+    expect(error?.code).toBe("MISSING_TARGET_CONTRACT")
+  })
+
+  it("rejects a call without a target function", () => {
+    const error = validateGraphStructure(crossCallGraph({ ...stakeParams, targetFunction: "   " }))
+    expect(error?.code).toBe("MISSING_TARGET_FUNCTION")
+  })
+
+  it("rejects arguments with an unsupported Rust type", () => {
+    const error = validateGraphStructure(
+      crossCallGraph({
+        ...stakeParams,
+        targetArgs: [{ name: "amount", value: "1", rustType: "u256", source: "literal" }],
+      })
+    )
+    expect(error?.code).toBe("INVALID_ARG_TYPE")
+  })
+
+  it("rejects an unsupported return type", () => {
+    const error = validateGraphStructure(crossCallGraph({ ...stakeParams, returnType: "Vec" }))
+    expect(error?.code).toBe("INVALID_RETURN_TYPE")
+  })
+
+  it("treats a CrossContractCall as an executable block", () => {
+    const result = validateContractGraph(crossCallGraph(stakeParams))
+    expect(result.ok).toBe(true)
+  })
+})
+
+describe("generateContractSource — CrossContractCall", () => {
+  it("emits a soroban_sdk client and invokes the target function", () => {
+    const { source } = generateContractSource(crossCallGraph(stakeParams))
+
+    expect(source).toContain('#[soroban_sdk::contractclient(name = "CrossContract1Client")]')
+    expect(source).toContain(`// Target contract: ${CONTRACT_ID}`)
+    expect(source).toContain("fn stake(env: Env, caller: Address, amount: i128) -> i128;")
+    expect(source).toContain(
+      "let stake_result: i128 = CrossContract1Client::new(&env, &target_contract).stake(&caller, &amount);"
+    )
+    expect(source).toContain("target_contract: Address")
+  })
+
+  it("emits literal, storage-key and invocation-argument operands", () => {
+    const { source } = generateContractSource(
+      crossCallGraph({
+        targetContractId: CONTRACT_ID,
+        targetFunction: "notify",
+        targetArgs: [
+          { name: "who", value: CONTRACT_ID, rustType: "Address", source: "literal" },
+          { name: "tag", value: "staked", rustType: "Symbol", source: "literal" },
+          { name: "amount", value: "150", rustType: "i128", source: "literal" },
+          { name: "open", value: "open", rustType: "bool", source: "storageKey" },
+          { name: "caller", value: "caller", rustType: "Address", source: "invocationArg" },
+        ],
+      })
+    )
+
+    expect(source).toContain(`Address::from_string(&String::from_str(&env, "${CONTRACT_ID}"))`)
+    expect(source).toContain('symbol_short!("staked")')
+    expect(source).toContain("&150")
+    expect(source).toContain(
+      'env.storage().instance().get::<_, bool>(&symbol_short!("open")).unwrap_or(false)'
+    )
+    expect(source).toContain("&caller")
+  })
+
+  it("emits a bare statement when no return value is bound", () => {
+    const { source } = generateContractSource(
+      crossCallGraph({
+        targetContractId: CONTRACT_ID,
+        targetFunction: "ping",
+        targetArgs: [],
+      })
+    )
+
+    expect(source).toContain("CrossContract1Client::new(&env, &target_contract).ping();")
+    expect(source).toContain("fn ping(env: Env);")
+    expect(source).not.toContain("let call_result")
+  })
+
+  it("numbers clients and target parameters when several calls are present", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "1", type: "default", data: { label: "Start" } },
+        {
+          id: "2",
+          type: "CrossContractCall",
+          data: {
+            label: "Stake",
+            params: { targetContractId: CONTRACT_ID, targetFunction: "stake", targetArgs: [] },
+          },
+        },
+        {
+          id: "3",
+          type: "CrossContractCall",
+          data: {
+            label: "Claim",
+            params: { targetContractId: CONTRACT_ID, targetFunction: "claim", targetArgs: [] },
+          },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "1", target: "2" },
+        { id: "e2", source: "2", target: "3" },
+      ],
+    }
+
+    const { source } = generateContractSource(graph)
+
+    expect(source).toContain("CrossContract1Client::new(&env, &target_contract).stake();")
+    expect(source).toContain("CrossContract2Client::new(&env, &target_contract_2).claim();")
+    expect(source).toContain("target_contract: Address, target_contract_2: Address")
+  })
+
+  it("lets a downstream Condition block gate on the bound return value", () => {
+    const graph = crossCallGraph(
+      stakeParams,
+      [
+        {
+          id: "3",
+          type: "Condition",
+          data: {
+            label: "Staked something",
+            params: {
+              conditionExpression: {
+                left: { type: "invocationArg", value: "stake_result" },
+                operator: ">",
+                right: { type: "constant", value: "0", constantKind: "number" },
+              },
+            },
+          },
+        },
+      ],
+      [{ id: "e2", source: "2", target: "3" }]
+    )
+
+    const { source } = generateContractSource(graph)
+
+    expect(source).toContain("let stake_result: i128 =")
+    expect(source).toContain("if !(stake_result > 0)")
+  })
+})

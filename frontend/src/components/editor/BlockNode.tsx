@@ -1,10 +1,12 @@
 "use client"
 
-import React, { useEffect } from "react"
-import { Handle, Position, useReactFlow } from "reactflow"
+import React, { useEffect, useMemo } from "react"
+import { Handle, Position, useNodes, useReactFlow } from "reactflow"
 import ConditionExpressionBuilder from "./ConditionExpressionBuilder"
 import AssetSelector from "./AssetSelector"
-import type { ConditionExpression, TransferAsset } from "@/lib/compile/schema"
+import CrossContractCallConfig from "./CrossContractCallConfig"
+import type { BlockParameters, TransferAsset } from "@/lib/compile/schema"
+import { sanitizeRustIdent } from "@/lib/compile/crossContract"
 import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
 // ---------------------------------------------------------------------------
@@ -13,14 +15,7 @@ import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
 interface NodeData {
   label: string
-  params?: {
-    condition?: string
-    conditionExpression?: ConditionExpression
-    storageKey?: string
-    token?: string
-    asset?: TransferAsset
-    eventName?: string
-  }
+  params?: BlockParameters
 }
 
 interface BlockNodeProps {
@@ -38,6 +33,19 @@ function assetBadgeLabel(asset: TransferAsset | undefined): string | null {
 
 export default function BlockNode({ id, type, data, selected }: BlockNodeProps) {
   const { setNodes } = useReactFlow()
+  const allNodes = useNodes()
+
+  // Return values bound by CrossContractCall blocks are referenceable as
+  // operands inside downstream Condition blocks.
+  const returnBindings = useMemo(
+    () =>
+      allNodes
+        .filter((node) => node.type === "CrossContractCall")
+        .map((node) => (node.data as NodeData)?.params?.returnBinding?.trim())
+        .filter((binding): binding is string => Boolean(binding))
+        .map((binding) => sanitizeRustIdent(binding, "call_result")),
+    [allNodes]
+  )
 
   // -------------------------------------------------------------------------
   // Color scheme per block type
@@ -76,6 +84,13 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
         "bg-purple-50 border-purple-300 text-purple-900 shadow-purple-100 dark:bg-purple-950/40 dark:border-purple-700/60 dark:text-purple-200 dark:shadow-none"
       badgeColor = "bg-purple-200/60 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
       break
+    case "CrossContractCall":
+      colorClasses =
+        "bg-indigo-50 border-indigo-300 text-indigo-900 shadow-indigo-100 dark:bg-indigo-950/40 dark:border-indigo-700/60 dark:text-indigo-200 dark:shadow-none"
+      badgeColor = "bg-indigo-200/60 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200"
+      panelBorder =
+        "border-indigo-200 bg-indigo-50/80 dark:border-indigo-800 dark:bg-indigo-950/50"
+      break
     case "default":
       colorClasses =
         "bg-blue-50 border-blue-300 text-blue-900 shadow-blue-100 dark:bg-blue-950/40 dark:border-blue-700/60 dark:text-blue-200 dark:shadow-none"
@@ -104,7 +119,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
     )
   }
 
-  const handleExpressionChange = (expr: ConditionExpression) => {
+  const handleExpressionChange = (expr: NonNullable<BlockParameters["conditionExpression"]>) => {
     updateParams({ conditionExpression: expr })
   }
 
@@ -125,6 +140,10 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
   }, [type, selected, data.params?.asset])
 
   const transferBadge = type === "Transfer" ? assetBadgeLabel(data.params?.asset) : null
+  const crossContractBadge =
+    type === "CrossContractCall" && data.params?.targetFunction
+      ? `${data.params.targetFunction}()`
+      : null
 
   // -------------------------------------------------------------------------
   // Render
@@ -159,6 +178,14 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
             {transferBadge}
           </span>
         )}
+        {crossContractBadge && (
+          <span
+            className={`mt-0.5 font-mono text-[10px] font-medium px-1.5 py-0.5 rounded ${badgeColor}`}
+            title={data.params?.targetContractId}
+          >
+            {crossContractBadge}
+          </span>
+        )}
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -179,6 +206,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           <ConditionExpressionBuilder
             value={data.params?.conditionExpression}
             onChange={handleExpressionChange}
+            extraArgs={returnBindings}
           />
         </div>
       )}
@@ -198,6 +226,25 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           <AssetSelector
             value={data.params?.asset ?? getNativeXlmAsset()}
             onChange={handleAssetChange}
+          />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Cross-contract call config panel — only visible when selected       */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "CrossContractCall" && selected && (
+        <div
+          className={`border-t-2 rounded-b-xl px-3 py-3 ${panelBorder}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+            Cross-Contract Call
+          </p>
+          <CrossContractCallConfig
+            value={data.params ?? {}}
+            onChange={(patch) => updateParams(patch)}
           />
         </div>
       )}
