@@ -606,3 +606,74 @@ impl TestContract {
     assert!(json["sourceHash"].is_string());
     assert!(json["sizeBytes"].as_u64().unwrap() > 0);
 }
+#[tokio::test]
+async fn test_compile_cache() {
+    let app = create_app();
+
+    let valid_source = r#"#![no_std]
+use soroban_sdk::{contract, contractimpl, Env};
+
+#[contract]
+pub struct CacheTestContract;
+
+#[contractimpl]
+impl CacheTestContract {
+    pub fn dummy(_env: Env) -> u32 {
+        99
+    }
+}
+"#;
+
+    // First compilation
+    let response1 = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/compile")
+                .method("POST")
+                .header("Content-Type", "application/json")
+                .body(Body::from(json!({ "source": valid_source }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response1.status(), StatusCode::OK);
+    let body1 = response1.into_body().collect().await.unwrap().to_bytes();
+    let json1: Value = serde_json::from_slice(&body1).unwrap();
+    assert_eq!(json1["cached"], false);
+
+    // Second compilation (should be cached)
+    let response2 = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/compile")
+                .method("POST")
+                .header("Content-Type", "application/json")
+                .body(Body::from(json!({ "source": valid_source }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response2.status(), StatusCode::OK);
+    let body2 = response2.into_body().collect().await.unwrap().to_bytes();
+    let json2: Value = serde_json::from_slice(&body2).unwrap();
+    assert_eq!(json2["cached"], true);
+
+    // Check stats endpoint
+    let response_stats = app
+        .oneshot(
+            Request::builder()
+                .uri("/cache/stats")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response_stats.status(), StatusCode::OK);
+    let stats_body = response_stats.into_body().collect().await.unwrap().to_bytes();
+    let stats_json: Value = serde_json::from_slice(&stats_body).unwrap();
+    assert_eq!(stats_json["hits"].as_u64().unwrap(), 1);
+}

@@ -20,6 +20,7 @@ export interface CompileResponse {
   wasm: string
   sourceHash: string
   sizeBytes: number
+  cached?: boolean
 }
 
 export class CompileContractError extends Error {
