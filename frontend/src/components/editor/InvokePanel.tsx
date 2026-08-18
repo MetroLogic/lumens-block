@@ -360,7 +360,7 @@ export default function InvokePanel({ deployedContractId, network }: Props) {
 
               {args.length === 0 ? (
                 <p className="text-xs italic text-gray-400 dark:text-slate-500">
-                  No arguments. Click "Add arg" to add one.
+                  No arguments. Click &ldquo;Add arg&rdquo; to add one.
                 </p>
               ) : (
                 <div className="space-y-2">
