@@ -2,7 +2,61 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
+import { Cpu, Clock, CheckCircle2, AlertCircle } from "lucide-react"
 import { CompileContractError, deployContract, estimateDeploymentFee, type StellarNetwork } from "@/lib/stellar/deploy"
+import { useAsyncCompile, type CompileStage } from "@/lib/stellar/useAsyncCompile"
+import { toContractGraph } from "@/lib/editor/graphPersistence"
+import { compileGraph } from "@/lib/compiler"
+
+// ─── CompileProgressBar ───────────────────────────────────────────────────────
+
+function CompileProgressBar({
+  stage,
+  progressLabel,
+}: {
+  stage: CompileStage
+  progressLabel: string
+}) {
+  if (stage === "idle") return null
+
+  const icon =
+    stage === "done" ? (
+      <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+    ) : stage === "error" ? (
+      <AlertCircle size={13} className="text-red-500 shrink-0" />
+    ) : stage === "building" ? (
+      <Cpu size={13} className="text-violet-400 shrink-0 animate-pulse" />
+    ) : (
+      <Clock size={13} className="text-amber-400 shrink-0" />
+    )
+
+  const barColor =
+    stage === "done"
+      ? "bg-emerald-400"
+      : stage === "error"
+      ? "bg-red-400"
+      : stage === "building"
+      ? "bg-violet-400"
+      : "bg-amber-400"
+
+  const isAnimating = stage === "queued" || stage === "building"
+
+  return (
+    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+        {icon}
+        <span>{progressLabel || "Compiling…"}</span>
+      </div>
+      <div className="h-1 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+        <div
+          className={`h-1 rounded-full transition-all ${barColor} ${
+            isAnimating ? "animate-pulse w-2/3" : "w-full"
+          }`}
+        />
+      </div>
+    </div>
+  )
+}
 
 interface Props {
   nodes: Node[]
@@ -29,6 +83,19 @@ export default function DeployButton({
   const [estimatedFee, setEstimatedFee] = useState<string | null>(null)
   const [estimateError, setEstimateError] = useState<string | null>(null)
   const [isEstimating, setIsEstimating] = useState(false)
+
+  // ── Async compile progress ──────────────────────────────────────────────────
+  const { state: compileState, startCompile, reset: resetCompile } = useAsyncCompile({
+    onDone: () => {
+      // The actual deploy still goes through deployContract (which handles
+      // signing). The async compile stream is purely for showing progress;
+      // no action needed here — the deploy flow takes over.
+    },
+    onError: (code, msg) => {
+      setStatus("error")
+      setMessage(`Compilation error (${code}): ${msg}`)
+    },
+  })
 
   const handleEstimate = useCallback(async () => {
     if (!walletAddress) {
@@ -81,6 +148,17 @@ export default function DeployButton({
 
     setStatus("deploying")
     setMessage(null)
+    resetCompile()
+
+    // Kick off async compile progress stream so the user sees live feedback
+    // while deployContract runs its own internal compile step.
+    try {
+      const graph = toContractGraph(nodes, edges)
+      const source = compileGraph(graph)
+      void startCompile(source)
+    } catch {
+      // If source gen fails, deployContract will surface the real error below.
+    }
 
     try {
       const result = await deployContract({ nodes, edges }, selectedNetwork, (stage) => {
@@ -171,6 +249,14 @@ export default function DeployButton({
               <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                 Insufficient balance. You are short by {shortfall.toFixed(7)} XLM.
               </p>
+            )}
+
+            {/* Live compile progress — shown while deploying */}
+            {status === "deploying" && (
+              <CompileProgressBar
+                stage={compileState.stage}
+                progressLabel={compileState.progressLabel}
+              />
             )}
 
             <div className="mt-5 flex justify-end gap-2">
