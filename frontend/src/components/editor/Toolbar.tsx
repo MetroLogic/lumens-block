@@ -4,7 +4,21 @@ import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
-const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
+const BLOCK_TYPES = [
+  "Condition",
+  "Transfer",
+  "Storage",
+  "Event",
+  "Auth",
+  "FunctionEntry",
+  "FunctionReturn",
+]
+
+/** Palette labels for block types whose identifier does not read well. */
+const BLOCK_LABELS: Record<string, string> = {
+  FunctionEntry: "Function Entry",
+  FunctionReturn: "Function Return",
+}
 
 interface Props {
   onOpenShortcuts?: () => void
@@ -95,7 +109,7 @@ export default function Toolbar({
           onKeyDown={(e) => handleKeyDown(e, index, type)}
           className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
         >
-          {type}
+          {BLOCK_LABELS[type] ?? type}
         </div>
       ))}
 

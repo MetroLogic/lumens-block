@@ -49,6 +49,8 @@ export const BLOCK_TYPES = [
   "Storage",
   "Event",
   "Auth",
+  "FunctionEntry",
+  "FunctionReturn",
 ] as const
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
@@ -70,6 +72,35 @@ export interface TransferAsset {
   name?: string
 }
 
+/**
+ * A single declared parameter on a FunctionEntry block.
+ * `rustType` is emitted verbatim into the generated signature after validation.
+ */
+export interface FunctionParamConfig {
+  name: string
+  rustType: string
+}
+
+/** Visibility modifier a FunctionEntry block can emit. */
+export type FunctionVisibility = "pub" | "pub(crate)"
+
+export const FUNCTION_VISIBILITIES: FunctionVisibility[] = ["pub", "pub(crate)"]
+
+/** Maximum parameters a single FunctionEntry may declare. */
+export const MAX_FUNCTION_PARAMS = 10
+
+/** Rust identifiers accepted for function and parameter names. */
+export const RUST_IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/
+
+/**
+ * Characters allowed in a user-supplied Rust type string.
+ *
+ * Deliberately an allowlist: it accepts the shapes a Soroban signature needs
+ * (`i128`, `Vec<Address>`, `(u32, bool)`, `&Env`) while rejecting anything that
+ * could close the signature and inject statements — `;`, `{`, `}` and friends.
+ */
+export const RUST_TYPE_PATTERN = /^[A-Za-z0-9_<>,:&()[\] ]+$/
+
 export interface BlockParameters {
   /** Token contract address for Transfer blocks (synced from `asset.contractId` when set) */
   token?: string
@@ -86,6 +117,21 @@ export interface BlockParameters {
    * Takes precedence over the legacy `condition` string during codegen.
    */
   conditionExpression?: ConditionExpression
+  /** Emitted function name for FunctionEntry blocks (a valid Rust identifier). */
+  functionName?: string
+  /** Visibility modifier for FunctionEntry blocks. Defaults to `pub`. */
+  visibility?: FunctionVisibility
+  /** Declared parameters for FunctionEntry blocks, in signature order after `env`. */
+  functionParams?: FunctionParamConfig[]
+  /** Rust return type for FunctionReturn blocks. Defaults to `()`. */
+  returnType?: string
+  /**
+   * Expression returned by a FunctionReturn block.
+   *
+   * Optional: when omitted, codegen emits a zero value for the declared
+   * `returnType` so the generated crate still compiles.
+   */
+  returnValue?: string
 }
 
 export interface ContractGraphNode {

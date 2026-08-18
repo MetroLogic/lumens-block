@@ -6,7 +6,9 @@ title: Block Reference
 
 Every contract in LumensBlock is a graph of **blocks** connected by edges. Execution flows from the **Start** block through each connected block in breadth-first order.
 
-There are **6 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
+A graph can instead declare **named functions**: tag a subgraph with a `FunctionEntry` block and the compiler emits a separate `pub fn` for it, so one contract can expose `deposit()`, `withdraw()` and `get_balance()` from a single deployment. Graphs with no `FunctionEntry` keep compiling to the single `execute()` entry point exactly as before.
+
+There are **8 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
 
 ---
 
@@ -155,6 +157,68 @@ env.events().publish((event_name,), (from.clone(), to.clone(), amount));
 
 ---
 
+## Function Entry
+
+Marks the root of a named function subgraph. A graph containing one or more `FunctionEntry` blocks compiles to one `pub fn` per entry, all inside the same `#[contractimpl] impl` block, instead of a single `execute()`.
+
+**Config fields:**
+
+| Field | Description |
+|---|---|
+| `functionName` | The emitted Rust function name. Must match `/^[a-z_][a-z0-9_]*$/`. |
+| `visibility` | `pub` (default) or `pub(crate)`. |
+| `functionParams` | Up to 10 `{ name, rustType }` pairs, emitted in order after `env`. |
+
+`env: Env` is always the first parameter and does not need declaring. Any parameter a body block relies on implicitly — `caller` for Auth, `from`/`to`/`amount`/`token` for Transfer, and so on — is appended automatically if you did not declare it.
+
+**Validation errors:**
+
+| Code | Cause |
+|---|---|
+| `MISSING_FUNCTION_NAME` | The entry has no name. |
+| `INVALID_FUNCTION_NAME` | The name is not a valid Rust identifier. |
+| `DUPLICATE_FUNCTION_NAME` | Two entries declare the same name. |
+| `TOO_MANY_FUNCTION_PARAMS` | More than 10 declared parameters. |
+| `INVALID_PARAM_NAME` / `RESERVED_PARAM_NAME` / `DUPLICATE_PARAM_NAME` | Bad parameter name, or one called `env`. |
+| `INVALID_PARAM_TYPE` | The Rust type contains characters no type can contain, or unbalanced brackets. |
+| `MISSING_FUNCTION_RETURN` | No `FunctionReturn` is reachable from the entry. |
+| `MULTIPLE_FUNCTION_RETURNS` | More than one `FunctionReturn` is reachable. |
+| `SHARED_FUNCTION_BLOCK` | A block is reachable from two different entries. |
+
+**Generated Soroban code:**
+```rust
+/// Generated from FunctionEntry "deposit".
+pub fn deposit(env: Env, amount: i128, caller: Address) -> i128 {
+    // Require caller
+    caller.require_auth();
+
+    amount
+}
+```
+
+**Example use case:** A vault contract exposing `deposit`, `withdraw` and `get_balance` as three separate callable functions on one deployed contract, rather than three separate deployments.
+
+---
+
+## Function Return
+
+Terminates a function subgraph and declares what the function returns. Every `FunctionEntry` needs exactly one reachable `FunctionReturn`; nothing downstream of a return belongs to that function.
+
+**Config fields:**
+
+| Field | Description |
+|---|---|
+| `returnType` | Rust return type, e.g. `i128`, `bool`, `()`. Defaults to `()`. |
+| `returnValue` | Expression to return. Optional — a zero value for the declared type is emitted when it is left empty. |
+
+**Validation errors:** `INVALID_RETURN_TYPE` for a malformed type, and `ORPHAN_FUNCTION_RETURN` when no `FunctionEntry` can reach the block.
+
+**Generated Soroban code:** the return type joins the signature and the value becomes the function's trailing expression.
+
+**Example use case:** Ending a `get_balance` subgraph with `returnType: i128` so callers receive the stored balance.
+
+---
+
 ## Block Limits
 
 | Limit | Value |
@@ -163,6 +227,7 @@ env.events().publish((event_name,), (from.clone(), to.clone(), amount));
 | Maximum edges per graph | 200 |
 | Maximum graph payload size | 256 KiB |
 | Maximum `storageKey` length | 9 characters |
+| Maximum parameters per `FunctionEntry` | 10 |
 
 ---
 

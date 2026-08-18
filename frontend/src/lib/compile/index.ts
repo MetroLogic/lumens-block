@@ -1,6 +1,8 @@
 export {
   BLOCK_TYPES,
+  FUNCTION_VISIBILITIES,
   MAX_EDGES,
+  MAX_FUNCTION_PARAMS,
   MAX_GRAPH_BYTES,
   MAX_NODES,
   isBlockType,
@@ -8,6 +10,8 @@ export {
 export type {
   BlockParameters,
   BlockType,
+  FunctionParamConfig,
+  FunctionVisibility,
   CompileError,
   CompileResult,
   CompileSuccess,
@@ -18,6 +22,14 @@ export type {
 
 export { generateContractSource, getExecutionOrder, GENERATED_CARGO_TOML } from "./codegen"
 export type { CodegenResult } from "./codegen"
+
+export {
+  collectFunctionGroups,
+  hasFunctionEntries,
+  traverseFunctionSubgraph,
+  validateRustType,
+} from "./functions"
+export type { FunctionGroup } from "./functions"
 
 export {
   normalizeReactFlowGraph,

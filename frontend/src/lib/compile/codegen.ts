@@ -1,4 +1,10 @@
 import { BlockType, ContractGraph, ContractGraphNode, ConditionExpression, Operand } from "./schema"
+import {
+  EXECUTABLE_TYPES,
+  collectFunctionGroups,
+  hasFunctionEntries,
+  type FunctionGroup,
+} from "./functions"
 import { validateGraphStructure } from "./validate"
 
 export interface CodegenResult {
@@ -12,19 +18,18 @@ export interface FunctionParam {
   rustType: string
 }
 
-const EXECUTABLE_TYPES = new Set<BlockType>([
-  "Auth",
-  "Transfer",
-  "Storage",
-  "Event",
-  "Condition",
-])
-
 /**
- * Returns nodes reachable from Start in breadth-first execution order.
+ * Returns executable nodes in breadth-first execution order.
+ *
+ * With no `rootId` the traversal starts at the Start node, which is the
+ * single-root behaviour every graph without `FunctionEntry` blocks relies on.
+ * Passing an explicit root walks one function subgraph instead, stopping at
+ * `FunctionReturn` nodes so a function body never bleeds into the next.
  */
-export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
-  const start = graph.nodes.find((n) => n.type === "default")
+export function getExecutionOrder(graph: ContractGraph, rootId?: string): ContractGraphNode[] {
+  const start = rootId
+    ? graph.nodes.find((n) => n.id === rootId)
+    : graph.nodes.find((n) => n.type === "default")
   if (!start) return []
 
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
@@ -48,6 +53,9 @@ export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
     const node = nodeById.get(id)
     if (!node) continue
 
+    // A return terminates the branch; nothing past it belongs to this function.
+    if (node.type === "FunctionReturn") continue
+
     if (EXECUTABLE_TYPES.has(node.type)) {
       order.push(node)
     }
@@ -60,10 +68,51 @@ export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
   return order
 }
 
+/**
+ * Returns the invocation parameters of a graph's entry point.
+ *
+ * For a multi-function graph this describes the first declared function, which
+ * is what the test and invoke panels drive; single-root graphs are unchanged.
+ */
 export function getFunctionParamsFromGraph(graph: ContractGraph): FunctionParam[] {
+  if (hasFunctionEntries(graph)) {
+    const collected = collectFunctionGroups(graph)
+    if (collected.ok && collected.groups.length > 0) {
+      return functionSignature(collected.groups[0])
+    }
+  }
+
   const executionOrder = getExecutionOrder(graph)
   const blockTypes = new Set(executionOrder.map((n) => n.type))
   return deriveParams(blockTypes)
+}
+
+/**
+ * Builds one function's full parameter list.
+ *
+ * `env` always comes first, then the parameters the author declared on the
+ * entry block, then any parameter the body's blocks reference implicitly
+ * (`caller`, `amount`, …) that the author did not already declare — without
+ * those the emitted body would not compile.
+ */
+export function functionSignature(group: FunctionGroup): FunctionParam[] {
+  const params: FunctionParam[] = [{ name: "env", rustType: "Env" }]
+  const seen = new Set<string>(["env"])
+
+  for (const declared of group.declaredParams) {
+    if (seen.has(declared.name)) continue
+    seen.add(declared.name)
+    params.push({ name: declared.name, rustType: declared.rustType })
+  }
+
+  const blockTypes = new Set(group.body.map((n) => n.type))
+  for (const derived of deriveParams(blockTypes)) {
+    if (seen.has(derived.name)) continue
+    seen.add(derived.name)
+    params.push(derived)
+  }
+
+  return params
 }
 
 export function paramRustTypeToInputType(rustType: string): "address" | "number" | "boolean" | "symbol" {
@@ -230,6 +279,10 @@ export function generateContractSource(graph: ContractGraph): CodegenResult {
     throw new Error(structureError.message)
   }
 
+  if (hasFunctionEntries(graph)) {
+    return generateMultiFunctionSource(graph)
+  }
+
   const executionOrder = getExecutionOrder(graph)
   const blockTypes = new Set(executionOrder.map((n) => n.type))
 
@@ -258,6 +311,77 @@ ${body}
     sourceHash: fnv1aHash(source),
     blockOrder: executionOrder.map((n) => `${n.type}:${n.id}`),
   }
+}
+
+/**
+ * Emits one `pub fn` per FunctionEntry inside a single `#[contractimpl]` block.
+ */
+function generateMultiFunctionSource(graph: ContractGraph): CodegenResult {
+  const collected = collectFunctionGroups(graph)
+  if (!collected.ok) {
+    throw new Error(collected.error.message)
+  }
+
+  const { groups } = collected
+
+  const allBlockTypes = new Set<BlockType>()
+  for (const group of groups) {
+    for (const node of group.body) allBlockTypes.add(node.type)
+  }
+
+  const needsSymbolShort = groups.some(
+    (g) => g.returnValue !== null && g.returnValue.includes("symbol_short!")
+  )
+  const imports = deriveImports(allBlockTypes)
+  if (needsSymbolShort && !imports.includes("symbol_short")) {
+    imports.push("Symbol", "symbol_short")
+    imports.sort()
+  }
+
+  const functions = groups.map((group) => emitFunction(group)).join("\n\n")
+
+  const source = `#![no_std]
+use soroban_sdk::{${imports.join(", ")}};
+
+#[contract]
+pub struct LumensBlockGenerated;
+
+#[contractimpl]
+impl LumensBlockGenerated {
+${functions}
+}
+`
+
+  const blockOrder: string[] = []
+  for (const group of groups) {
+    for (const node of group.body) blockOrder.push(`${node.type}:${node.id}`)
+  }
+
+  return {
+    source,
+    sourceHash: fnv1aHash(source),
+    blockOrder,
+  }
+}
+
+/** Renders one function group as a Rust method. */
+function emitFunction(group: FunctionGroup): string {
+  const params = functionSignature(group)
+  const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
+  const returnClause = group.returnType === "()" ? "" : ` -> ${group.returnType}`
+
+  const statements = group.body.map(emitBlock).filter(Boolean)
+  if (group.returnValue !== null) {
+    statements.push(`        ${group.returnValue}`)
+  }
+
+  const label = group.entry.data.label.replace(/"/g, '\\"')
+  const body = statements.join("\n\n")
+
+  return `    /// Generated from FunctionEntry "${label}".
+    ${group.visibility} fn ${group.name}(${paramList})${returnClause} {
+${body}
+    }`
 }
 
 export const GENERATED_CARGO_TOML = `[package]

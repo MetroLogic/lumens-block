@@ -44,6 +44,8 @@ const nodeTypes = {
   Storage: BlockNode,
   Event: BlockNode,
   Auth: BlockNode,
+  FunctionEntry: BlockNode,
+  FunctionReturn: BlockNode,
   default: BlockNode,
 }
 

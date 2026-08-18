@@ -12,6 +12,7 @@ import {
   type ConditionExpression,
   type Operand,
 } from "./schema"
+import { collectFunctionGroups, hasFunctionEntries } from "./functions"
 
 function invalid(code: string, message: string, details?: string[]): CompileError {
   return { code, message, details }
@@ -289,7 +290,11 @@ export function validateContractGraph(
   }
 
   const startNodes = parsedNodes.filter((n) => n.type === "default")
-  if (startNodes.length === 0) {
+  const declaresFunctions = parsedNodes.some((n) => n.type === "FunctionEntry")
+
+  // A graph built entirely out of named function entry points has no use for a
+  // Start node; every other graph is still rooted at exactly one.
+  if (startNodes.length === 0 && !declaresFunctions) {
     return {
       ok: false,
       error: invalid(
@@ -325,6 +330,13 @@ export function validateContractGraph(
  * Ensures executable blocks are reachable from Start and the graph has actionable logic.
  */
 export function validateGraphStructure(graph: ContractGraph): CompileError | null {
+  // Graphs with explicit entry points are validated per function instead of by
+  // reachability from a single Start node.
+  if (hasFunctionEntries(graph)) {
+    const collected = collectFunctionGroups(graph)
+    return collected.ok ? null : collected.error
+  }
+
   const start = graph.nodes.find((n) => n.type === "default")
   if (!start) {
     return invalid("MISSING_START_NODE", 'Graph must include a Start node (type "default").')
