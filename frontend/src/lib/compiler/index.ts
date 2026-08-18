@@ -5,6 +5,14 @@ import {
   ContractGraphNode,
   Operand,
 } from "../compile/schema"
+import { GENERATED_ERROR_ENUM } from "../compile/codegen"
+import {
+  collectCrossContractImports,
+  crossContractParams,
+  emitCrossContractCall,
+  emitCrossContractClients,
+  getCrossContractNodes,
+} from "../compile/crossContract"
 
 export type { ContractGraph, ContractGraphNode, ContractGraphEdge } from "../compile/schema"
 
@@ -14,6 +22,7 @@ const EXECUTABLE_TYPES = new Set<BlockType>([
   "Storage",
   "Event",
   "Condition",
+  "CrossContractCall",
 ])
 
 export interface CompileGraphOptions {
@@ -156,15 +165,26 @@ export function compileGraph(graph: ContractGraph, options?: CompileGraphOptions
   const executionOrder = topologicalSort(graph, options)
   const blockTypes = new Set(executionOrder.map((n) => n.type))
 
-  const imports = deriveImports(blockTypes)
-  const params = deriveParams(blockTypes)
+  const imports = deriveImports(blockTypes, executionOrder)
+  const params = deriveParams(blockTypes, executionOrder)
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
 
-  const body = executionOrder.map(emitNodeCode).filter(Boolean).join("\n\n")
+  const crossCallIndexes = new Map(
+    getCrossContractNodes(executionOrder).map((node, index) => [node.id, index])
+  )
+  const body = executionOrder
+    .map((node) => emitNodeCode(node, crossCallIndexes))
+    .filter(Boolean)
+    .join("\n\n")
+
+  const clients = emitCrossContractClients(executionOrder)
+  const declarations = [blockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
+    .filter(Boolean)
+    .join("\n\n")
 
   return `#![no_std]
 use soroban_sdk::{${imports.join(", ")}};
-
+${declarations ? `\n${declarations}\n` : ""}
 #[contract]
 pub struct LumensBlockContract;
 
@@ -178,7 +198,10 @@ ${body.length > 0 ? body : "        // No executable nodes"}
 `
 }
 
-function deriveParams(blockTypes: Set<BlockType>): Array<{ name: string; rustType: string }> {
+function deriveParams(
+  blockTypes: Set<BlockType>,
+  nodes: ContractGraphNode[] = []
+): Array<{ name: string; rustType: string }> {
   const params: Array<{ name: string; rustType: string }> = [{ name: "env", rustType: "Env" }]
 
   if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
@@ -208,10 +231,13 @@ function deriveParams(blockTypes: Set<BlockType>): Array<{ name: string; rustTyp
     params.push({ name: "event_name", rustType: "Symbol" })
   }
 
+  // Arguments and target addresses required by CrossContractCall blocks.
+  params.push(...crossContractParams(nodes, params.map((param) => param.name)))
+
   return params
 }
 
-function deriveImports(blockTypes: Set<BlockType>): string[] {
+function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = []): string[] {
   const imports = new Set<string>(["contract", "contractimpl", "Env"])
 
   if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
@@ -228,16 +254,31 @@ function deriveImports(blockTypes: Set<BlockType>): string[] {
   }
 
   if (blockTypes.has("Condition")) {
+    imports.add("contracterror")
     imports.add("panic_with_error")
+  }
+
+  for (const name of collectCrossContractImports(nodes)) {
+    imports.add(name)
   }
 
   return Array.from(imports).sort()
 }
 
-function emitNodeCode(node: ContractGraphNode): string {
+function emitNodeCode(node: ContractGraphNode, crossCallIndexes: Map<string, number>): string {
   const label = node.data.label.replace(/"/g, '\\"')
 
   switch (node.type) {
+    case "CrossContractCall": {
+      const index = crossCallIndexes.get(node.id) ?? 0
+      const fn = node.data.params?.targetFunction?.trim()
+      return emitCrossContractCall(
+        node,
+        index,
+        fn ? `CrossContractCall: ${label} → ${fn}()` : `CrossContractCall: ${label}`
+      )
+    }
+
     case "Auth":
       return `        // Auth: ${label}\n        caller.require_auth();`
 
@@ -257,9 +298,9 @@ function emitNodeCode(node: ContractGraphNode): string {
       const expr = node.data.params?.conditionExpression
       if (expr) {
         const rustCondition = buildRustCondition(expr)
-        return `        // Condition: ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+        return `        // Condition: ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
       }
-      return `        // Condition: ${label}\n        if !release {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+      return `        // Condition: ${label}\n        if !release {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
     }
 
     default:

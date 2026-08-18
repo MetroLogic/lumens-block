@@ -6,7 +6,7 @@ title: Block Reference
 
 Every contract in LumensBlock is a graph of **blocks** connected by edges. Execution flows from the **Start** block through each connected block in breadth-first order.
 
-There are **6 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
+There are **7 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
 
 ---
 
@@ -108,7 +108,7 @@ Start → Auth → Storage → Condition → Transfer
 
 ## Condition
 
-Gates execution on a boolean parameter. If the condition is not met the contract panics with `symbol_short!("cond")`.
+Gates execution on a boolean parameter. If the condition is not met the contract panics with the generated `GeneratedError::ConditionFailed` contract error.
 
 **Config fields:**
 
@@ -124,7 +124,19 @@ Gates execution on a boolean parameter. If the condition is not met the contract
 ```rust
 // Release Condition Met?
 if !release {
-    panic_with_error!(&env, symbol_short!("cond"));
+    panic_with_error!(&env, GeneratedError::ConditionFailed);
+}
+```
+
+Graphs containing a Condition block also emit the error type the guard panics with:
+
+```rust
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum GeneratedError {
+    /// A Condition block guard evaluated to false.
+    ConditionFailed = 1,
 }
 ```
 
@@ -152,6 +164,52 @@ env.events().publish((event_name,), (from.clone(), to.clone(), amount));
 ```
 
 **Example use case:** Emit a `transferred` event after a Token Transfer block so a frontend dApp can listen and update the UI in real time.
+
+---
+
+## Cross-Contract Call
+
+Invokes a function on another already-deployed Soroban contract and, optionally, binds the
+result to a name that downstream blocks can read.
+
+**Config fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `targetContractId` | yes | Address of the deployed contract to call. Compilation fails with `MISSING_TARGET_CONTRACT` when empty. |
+| `targetFunction` | yes | Name of the function to invoke. Compilation fails with `MISSING_TARGET_FUNCTION` when empty. |
+| `targetArgs` | no | Ordered argument list. Each argument has a `name`, a `rustType` (`Address`, `i128`, `Symbol` or `bool`) and a value `source`: `literal`, `storageKey` (read from instance storage) or `invocationArg` (an `execute` parameter). |
+| `returnBinding` | no | Name the return value is bound to. When set, the name is selectable as an **Argument** operand in downstream Condition blocks. |
+| `returnType` | no | Rust type of the bound return value. Defaults to `i128`. |
+
+Pasting or uploading the target contract's JSON ABI in the config panel turns the function
+field into a selector and pre-fills the argument slots with the declared types. Arguments
+whose configured type diverges from the ABI are flagged inline.
+
+| Generated parameter | Rust type | Description |
+|---|---|---|
+| `target_contract` | `Address` | Address the call is made against (`target_contract_2`, `target_contract_3`, … for further Cross-Contract Call blocks) |
+| *argument names* | *as configured* | Every argument sourced from an `invocationArg` that no other block already declares |
+
+**Generated Soroban code** (target `stake`, arguments `caller`/`amount`, bound to `stake_result`):
+```rust
+#[soroban_sdk::contractclient(name = "CrossContract1Client")]
+pub trait CrossContract1 {
+    // Target contract: CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ
+    fn stake(env: Env, caller: Address, amount: i128) -> i128;
+}
+```
+```rust
+// Stake Pool → stake()
+let stake_result: i128 = CrossContract1Client::new(&env, &target_contract).stake(&caller, &amount);
+```
+
+**Example use case:** Stake a user's deposit into an external pool contract and abort the
+transaction unless the pool reports a non-zero staked amount.
+
+```
+Start → Auth → Cross-Contract Call → Condition → Event
+```
 
 ---
 

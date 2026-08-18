@@ -41,7 +41,8 @@ describe("compileGraph", () => {
 
     const code = compileGraph(graph)
     expect(code).toContain("if !release {")
-    expect(code).toContain("panic_with_error!(&env, symbol_short!(\"cond\"));")
+    expect(code).toContain("panic_with_error!(&env, GeneratedError::ConditionFailed);")
+    expect(code).toContain("pub enum GeneratedError {")
   })
 
   it("produces valid Soroban output for Storage block type", () => {
@@ -151,5 +152,62 @@ describe("compileGraph", () => {
     expect(consoleSpy).toHaveBeenCalled()
 
     consoleSpy.mockRestore()
+  })
+})
+
+describe("compileGraph — CrossContractCall", () => {
+  const stakePoolGraph: ContractGraph = {
+    nodes: [
+      { id: "start", type: "default", data: { label: "Start" } },
+      { id: "auth", type: "Auth", data: { label: "Require Auth" } },
+      {
+        id: "call",
+        type: "CrossContractCall",
+        data: {
+          label: "Stake Pool",
+          params: {
+            targetContractId: "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ",
+            targetFunction: "stake",
+            targetArgs: [
+              { name: "caller", value: "caller", rustType: "Address", source: "invocationArg" },
+              { name: "amount", value: "amount", rustType: "i128", source: "invocationArg" },
+            ],
+            returnBinding: "stake_result",
+            returnType: "i128",
+          },
+        },
+      },
+    ],
+    edges: [
+      { id: "e1", source: "start", target: "auth" },
+      { id: "e2", source: "auth", target: "call" },
+    ],
+  }
+
+  it("emits the soroban_sdk client macro for a CrossContractCall node", () => {
+    const code = compileGraph(stakePoolGraph)
+
+    expect(code).toContain('#[soroban_sdk::contractclient(name = "CrossContract1Client")]')
+    expect(code).toContain("pub trait CrossContract1 {")
+    expect(code).toContain("fn stake(env: Env, caller: Address, amount: i128) -> i128;")
+  })
+
+  it("invokes the target contract through the generated client", () => {
+    const code = compileGraph(stakePoolGraph)
+
+    expect(code).toContain(
+      "let stake_result: i128 = CrossContract1Client::new(&env, &target_contract).stake(&caller, &amount);"
+    )
+  })
+
+  it("derives a target_contract parameter for the entry point", () => {
+    const code = compileGraph(stakePoolGraph)
+
+    expect(code).toContain("target_contract: Address")
+  })
+
+  it("includes the CrossContractCall node in the execution order", () => {
+    const order = topologicalSort(stakePoolGraph).map((n) => n.id)
+    expect(order).toEqual(["auth", "call"])
   })
 })
