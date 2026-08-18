@@ -137,6 +137,12 @@ cargo run
 #### Configuration & Environment Variables
 
 - `PORT`: Port to listen on (default: `8080`)
+- `CARGO`: Path to cargo binary for compilation (default: `cargo`)
+- `COMPILE_TIMEOUT_SECS`: Maximum compilation time in seconds (default: `30`)
+- `MAX_SOURCE_BYTES`: Maximum allowed source code size in bytes (default: `65536`)
+- `COMPILE_CPU_SECS`: CPU time limit for cargo subprocess on Linux in seconds (default: `20`)
+- `COMPILE_MEM_MB`: Virtual memory limit for cargo subprocess on Linux in MB (default: `1024`)
+- `COMPILE_WORK_DIR`: Base directory for compilation workspaces (default: `/tmp/lumens-compile`)
 - `STELLAR_RPC_TESTNET`: Custom Soroban RPC Testnet URL (default: `https://soroban-testnet.stellar.org`)
 - `STELLAR_RPC_MAINNET`: Custom Soroban RPC Mainnet URL (default: `https://soroban.stellar.org`)
 

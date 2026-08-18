@@ -88,7 +88,9 @@ pub async fn deploy(
                 Json(DeployErrorResponse {
                     error: DeployErrorDetail {
                         code: "MISSING_SIGNED_XDR".into(),
-                        message: "signed_xdr (or tx_xdr) is required to submit a contract deployment.".into(),
+                        message:
+                            "signed_xdr (or tx_xdr) is required to submit a contract deployment."
+                                .into(),
                     },
                 }),
             ));
@@ -156,7 +158,11 @@ pub async fn deploy(
             Json(DeployErrorResponse {
                 error: DeployErrorDetail {
                     code: "RPC_SUBMIT_ERROR".into(),
-                    message: err.get("message").and_then(|m| m.as_str()).unwrap_or("RPC submit error").into(),
+                    message: err
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("RPC submit error")
+                        .into(),
                 },
             }),
         ));
@@ -169,7 +175,10 @@ pub async fn deploy(
             Json(DeployErrorResponse {
                 error: DeployErrorDetail {
                     code: "TX_REJECTED".into(),
-                    message: format!("Transaction was rejected by Stellar network: {:?}", send_resp["result"]),
+                    message: format!(
+                        "Transaction was rejected by Stellar network: {:?}",
+                        send_resp["result"]
+                    ),
                 },
             }),
         ));
@@ -241,7 +250,7 @@ pub async fn deploy(
         let hash = hex::encode(hasher.finalize()).to_uppercase();
         format!("C{}", &hash[..55.min(hash.len())])
     } else {
-        format!("C{}", &tx_hash[..55.min(tx_hash.len())].to_uppercase())
+        format!("C{}", tx_hash[..55.min(tx_hash.len())].to_uppercase())
     };
 
     Ok(Json(DeployResponse {

@@ -2,12 +2,62 @@ use axum::{http::StatusCode, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{env, process::Stdio, time::Duration};
-use tempfile::Builder;
-use tokio::{fs, process::Command, time::timeout};
+use std::env;
+use std::path::PathBuf;
+use std::time::Duration;
+use tokio::fs;
+use tokio::process::Command;
+use tokio::time::timeout;
+use uuid::Uuid;
 
-const MAX_SOURCE_LEN: usize = 1_000_000; // 1 MB
-const COMPILE_TIMEOUT_SECS: u64 = 90;
+fn env_or(key: &str, default: &str) -> String {
+    env::var(key).unwrap_or_else(|_| default.to_string())
+}
+
+fn env_or_u64(key: &str, default: u64) -> u64 {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_or_usize(key: &str, default: usize) -> usize {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn compile_timeout_secs() -> u64 {
+    env_or_u64("COMPILE_TIMEOUT_SECS", 30)
+}
+
+fn max_source_bytes() -> usize {
+    env_or_usize("MAX_SOURCE_BYTES", 65536)
+}
+
+fn compile_cpu_secs() -> u64 {
+    env_or_u64("COMPILE_CPU_SECS", 20)
+}
+
+fn compile_mem_mb() -> u64 {
+    env_or_u64("COMPILE_MEM_MB", 1024)
+}
+
+fn compile_work_dir() -> PathBuf {
+    PathBuf::from(env_or("COMPILE_WORK_DIR", "/tmp/lumens-compile"))
+}
+
+const FORBIDDEN_PATTERNS: &[&str] = &[
+    "build.rs",
+    "include!(",
+    "include_str!(",
+    "include_bytes!(",
+    "std::fs",
+    "std::process",
+    "std::net",
+    "#[proc_macro",
+];
 
 #[derive(Debug, Deserialize)]
 pub struct CompileRequest {
@@ -36,6 +86,79 @@ pub struct CompileErrorDetail {
     pub details: Option<Vec<String>>,
 }
 
+fn err(
+    status: StatusCode,
+    code: &str,
+    message: String,
+) -> (StatusCode, Json<CompileErrorResponse>) {
+    (
+        status,
+        Json(CompileErrorResponse {
+            error: CompileErrorDetail {
+                code: code.into(),
+                message,
+                details: None,
+            },
+        }),
+    )
+}
+
+fn err_with_details(
+    status: StatusCode,
+    code: &str,
+    message: String,
+    details: Vec<String>,
+) -> (StatusCode, Json<CompileErrorResponse>) {
+    (
+        status,
+        Json(CompileErrorResponse {
+            error: CompileErrorDetail {
+                code: code.into(),
+                message,
+                details: Some(details),
+            },
+        }),
+    )
+}
+
+fn validate_source(source: &str) -> Result<(), (StatusCode, Json<CompileErrorResponse>)> {
+    if source.trim().is_empty() {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "INVALID_PAYLOAD",
+            "Rust source code cannot be empty.".into(),
+        ));
+    }
+
+    if source.len() > max_source_bytes() {
+        return Err(err(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "PAYLOAD_TOO_LARGE",
+            format!(
+                "Source code exceeds maximum allowed size of {} bytes.",
+                max_source_bytes()
+            ),
+        ));
+    }
+
+    let mut matched: Vec<String> = Vec::new();
+    for pattern in FORBIDDEN_PATTERNS {
+        if source.contains(pattern) {
+            matched.push(pattern.to_string());
+        }
+    }
+    if !matched.is_empty() {
+        return Err(err_with_details(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "forbidden_pattern",
+            "Source contains forbidden patterns that may compromise server security.".into(),
+            matched,
+        ));
+    }
+
+    Ok(())
+}
+
 const TEMPLATE_CARGO_TOML: &str = r#"[package]
 name = "lumens_block_generated"
 version = "0.1.0"
@@ -58,133 +181,136 @@ codegen-units = 1
 lto = true
 "#;
 
+fn set_resource_limits(cmd: &mut Command) {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let cpu_secs = compile_cpu_secs();
+        let mem_bytes = compile_mem_mb() * 1024 * 1024;
+
+        unsafe {
+            cmd.as_std_mut().pre_exec(move || {
+                use nix::sys::resource::{setrlimit, Resource};
+                let _ = setrlimit(Resource::RLIMIT_CPU, cpu_secs, cpu_secs);
+                let _ = setrlimit(Resource::RLIMIT_AS, mem_bytes, mem_bytes);
+                Ok(())
+            });
+        }
+    }
+}
+
 pub async fn compile(
     Json(req): Json<CompileRequest>,
 ) -> Result<Json<CompileResponse>, (StatusCode, Json<CompileErrorResponse>)> {
-    if req.source.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "INVALID_PAYLOAD".into(),
-                    message: "Rust source code cannot be empty.".into(),
-                    details: None,
-                },
-            }),
-        ));
-    }
+    validate_source(&req.source)?;
 
-    if req.source.len() > MAX_SOURCE_LEN {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "PAYLOAD_TOO_LARGE".into(),
-                    message: format!("Source code exceeds maximum allowed size of {MAX_SOURCE_LEN} bytes."),
-                    details: None,
-                },
-            }),
-        ));
-    }
-
-    // Create temporary workspace directory
-    let temp_dir = Builder::new().prefix("soroban-build-").tempdir().map_err(|e| {
-        (
+    let base_dir = compile_work_dir();
+    fs::create_dir_all(&base_dir).await.map_err(|e| {
+        err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "DIR_CREATE_FAILED".into(),
-                    message: format!("Failed to create temporary build directory: {e}"),
-                    details: None,
-                },
-            }),
+            "DIR_CREATE_FAILED",
+            format!("Failed to create compile work directory: {e}"),
         )
     })?;
 
-    let work_dir = temp_dir.path();
+    let job_id = Uuid::new_v4();
+    let work_dir = base_dir.join(job_id.to_string());
     let src_dir = work_dir.join("src");
     let target_dir = work_dir.join("target");
 
     fs::create_dir_all(&src_dir).await.map_err(|e| {
-        (
+        err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "DIR_CREATE_FAILED".into(),
-                    message: format!("Failed to create src directory: {e}"),
-                    details: None,
-                },
-            }),
+            "DIR_CREATE_FAILED",
+            format!("Failed to create src directory: {e}"),
         )
     })?;
 
     fs::write(work_dir.join("Cargo.toml"), TEMPLATE_CARGO_TOML)
         .await
         .map_err(|e| {
-            (
+            err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CompileErrorResponse {
-                    error: CompileErrorDetail {
-                        code: "WRITE_FAILED".into(),
-                        message: format!("Failed to write Cargo.toml: {e}"),
-                        details: None,
-                    },
-                }),
+                "WRITE_FAILED",
+                format!("Failed to write Cargo.toml: {e}"),
             )
         })?;
 
     fs::write(src_dir.join("lib.rs"), &req.source)
         .await
         .map_err(|e| {
-            (
+            err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CompileErrorResponse {
-                    error: CompileErrorDetail {
-                        code: "WRITE_FAILED".into(),
-                        message: format!("Failed to write lib.rs: {e}"),
-                        details: None,
-                    },
-                }),
+                "WRITE_FAILED",
+                format!("Failed to write lib.rs: {e}"),
             )
         })?;
 
     let cargo_bin = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
 
-    let mut cmd = Command::new(cargo_bin);
+    let mut cmd = Command::new(&cargo_bin);
     cmd.arg("build")
         .arg("--target")
         .arg("wasm32-unknown-unknown")
         .arg("--release")
-        .current_dir(work_dir)
+        .current_dir(&work_dir)
         .env("CARGO_TARGET_DIR", &target_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
 
-    let compile_task = cmd.output();
-    let output = match timeout(Duration::from_secs(COMPILE_TIMEOUT_SECS), compile_task).await {
-        Ok(Ok(output)) => output,
-        Ok(Err(e)) => {
-            return Err((
+    set_resource_limits(&mut cmd);
+
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            cleanup_dir(&work_dir).await;
+            return Err(err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CompileErrorResponse {
-                    error: CompileErrorDetail {
-                        code: "EXEC_FAILED".into(),
-                        message: format!("Failed to execute cargo build: {e}"),
-                        details: None,
-                    },
-                }),
+                "EXEC_FAILED",
+                format!("Failed to start cargo build: {e}"),
             ));
         }
-        Err(_) => {
-            return Err((
-                StatusCode::GATEWAY_TIMEOUT,
-                Json(CompileErrorResponse {
-                    error: CompileErrorDetail {
-                        code: "TIMEOUT".into(),
-                        message: format!("Compilation timed out after {COMPILE_TIMEOUT_SECS} seconds."),
-                        details: None,
-                    },
-                }),
+    };
+
+    let pid = child.id();
+
+    let child_wait = tokio::spawn(async move { child.wait_with_output().await });
+
+    let timeout_secs = compile_timeout_secs();
+    let output = match timeout(Duration::from_secs(timeout_secs), child_wait).await {
+        Ok(Ok(Ok(output))) => output,
+        Ok(Ok(Err(e))) => {
+            cleanup_dir(&work_dir).await;
+            return Err(err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "EXEC_FAILED",
+                format!("Failed to read cargo output: {e}"),
+            ));
+        }
+        Ok(Err(e)) => {
+            cleanup_dir(&work_dir).await;
+            return Err(err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "EXEC_FAILED",
+                format!("Cargo build task panicked: {e}"),
+            ));
+        }
+        Err(_elapsed) => {
+            if let Some(p) = pid {
+                #[cfg(unix)]
+                {
+                    use nix::sys::signal::{kill, Signal};
+                    use nix::unistd::Pid;
+                    let _ = kill(Pid::from_raw(p as i32), Signal::SIGKILL);
+                    let _ = kill(Pid::from_raw(-(p as i32)), Signal::SIGKILL);
+                }
+            }
+            cleanup_dir(&work_dir).await;
+            return Err(err(
+                StatusCode::REQUEST_TIMEOUT,
+                "compilation_timeout",
+                format!("Compilation exceeded {timeout_secs}s limit"),
             ));
         }
     };
@@ -193,21 +319,13 @@ pub async fn compile(
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let combined = format!("{stderr}\n{stdout}");
-
-        let details = combined
-            .lines()
-            .map(|l| l.to_string())
-            .collect::<Vec<String>>();
-
-        return Err((
+        let details: Vec<String> = combined.lines().map(|l| l.to_string()).collect();
+        cleanup_dir(&work_dir).await;
+        return Err(err_with_details(
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "COMPILATION_FAILED".into(),
-                    message: "Rust compilation failed.".into(),
-                    details: Some(details),
-                },
-            }),
+            "COMPILATION_FAILED",
+            "Rust compilation failed.".into(),
+            details,
         ));
     }
 
@@ -217,28 +335,19 @@ pub async fn compile(
         .join("lumens_block_generated.wasm");
 
     if !wasm_path.exists() {
-        return Err((
+        cleanup_dir(&work_dir).await;
+        return Err(err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "WASM_NOT_FOUND".into(),
-                    message: "Compilation succeeded but target WASM file was not found.".into(),
-                    details: None,
-                },
-            }),
+            "WASM_NOT_FOUND",
+            "Compilation succeeded but target WASM file was not found.".into(),
         ));
     }
 
     let wasm_bytes = fs::read(&wasm_path).await.map_err(|e| {
-        (
+        err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "WASM_READ_FAILED".into(),
-                    message: format!("Failed to read generated WASM binary: {e}"),
-                    details: None,
-                },
-            }),
+            "WASM_READ_FAILED",
+            format!("Failed to read generated WASM binary: {e}"),
         )
     })?;
 
@@ -250,9 +359,15 @@ pub async fn compile(
     let wasm_base64 = BASE64.encode(&wasm_bytes);
     let size_bytes = wasm_bytes.len();
 
+    cleanup_dir(&work_dir).await;
+
     Ok(Json(CompileResponse {
         wasm: wasm_base64,
         source_hash,
         size_bytes,
     }))
+}
+
+async fn cleanup_dir(path: &std::path::Path) {
+    let _ = fs::remove_dir_all(path).await;
 }
