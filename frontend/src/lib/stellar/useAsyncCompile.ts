@@ -69,12 +69,18 @@ export function useAsyncCompile({ onDone, onError }: UseAsyncCompileOptions) {
           body: JSON.stringify({ source }),
         })
 
-        const body = await res.json() as { jobId?: string; error?: { code: string; message: string } }
+        const body = await res.json() as { jobId?: string; cached?: boolean; error?: { code: string; message: string } }
 
         if (!res.ok || !body.jobId) {
           const err = body.error ?? { code: String(res.status), message: "Failed to enqueue compilation." }
           setState({ stage: "error", queuePosition: null, elapsedMs: null, progressLabel: err.message })
           onError(err.code, err.message)
+          return
+        }
+        
+        if (body.cached) {
+          setState({ stage: "done", queuePosition: null, elapsedMs: null, progressLabel: "⚡ Cached" })
+          onDone({ wasm: "", sourceHash: "", sizeBytes: 0 })
           return
         }
 

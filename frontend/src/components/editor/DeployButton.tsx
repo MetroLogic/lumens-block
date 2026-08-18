@@ -43,9 +43,16 @@ function CompileProgressBar({
 
   return (
     <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
-      <div className="mb-1.5 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-        {icon}
-        <span>{progressLabel || "Compiling…"}</span>
+      <div className="mb-1.5 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+        <div className="flex items-center gap-1.5">
+          {icon}
+          <span>{progressLabel || "Compiling…"}</span>
+        </div>
+        {progressLabel === "⚡ Cached" && (
+          <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+            ⚡ Cached
+          </span>
+        )}
       </div>
       <div className="h-1 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
         <div
