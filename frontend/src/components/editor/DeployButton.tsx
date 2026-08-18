@@ -11,6 +11,7 @@ interface Props {
   selectedNetwork: StellarNetwork
   walletAddress: string | null
   walletBalance: string
+  onDeploySuccess?: (contractId: string) => void
 }
 
 export default function DeployButton({
@@ -20,6 +21,7 @@ export default function DeployButton({
   selectedNetwork,
   walletAddress,
   walletBalance,
+  onDeploySuccess,
 }: Props) {
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
   const [message, setMessage] = useState<string | null>(null)
@@ -87,6 +89,12 @@ export default function DeployButton({
       setStatus("success")
       setMessage(result)
       setIsConfirmOpen(false)
+
+      // Extract the contract ID from the success message and notify the parent
+      const idMatch = result.match(/Contract ID:\s*(\S+)/)
+      if (idMatch && onDeploySuccess) {
+        onDeploySuccess(idMatch[1])
+      }
     } catch (err) {
       setStatus("error")
       if (err instanceof CompileContractError) {

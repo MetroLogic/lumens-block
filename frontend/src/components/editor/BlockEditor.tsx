@@ -29,6 +29,7 @@ import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
 import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
+import InvokePanel from "./InvokePanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
@@ -63,6 +64,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const [deployedContractId, setDeployedContractId] = useState<string | null>(null)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -314,6 +316,8 @@ export default function BlockEditor() {
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
 
+      <InvokePanel deployedContractId={deployedContractId} network={selectedNetwork} />
+
       <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
           nodes={nodes}
@@ -361,6 +365,7 @@ export default function BlockEditor() {
             walletAddress={walletAddress}
             walletBalance={walletBalance}
             disabled={testsBlockingDeploy}
+            onDeploySuccess={(id) => setDeployedContractId(id)}
           />
         </div>
       </div>

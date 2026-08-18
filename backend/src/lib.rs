@@ -22,5 +22,6 @@ pub fn create_app() -> Router {
         .route("/health", get(handlers::health::health_check))
         .route("/compile", post(handlers::compile::compile))
         .route("/deploy", post(handlers::deploy::deploy))
+        .route("/invoke", post(handlers::invoke::invoke))
         .layer(cors)
 }
