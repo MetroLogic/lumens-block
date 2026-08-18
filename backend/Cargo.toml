@@ -6,8 +6,9 @@ description = "LumensBlock backend service — Soroban contract compilation and 
 license = "MIT"
 
 [dependencies]
-axum = "0.7"
+axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
@@ -20,6 +21,9 @@ sha2 = "0.10"
 hex = "0.4"
 tower = { version = "0.4", features = ["util"] }
 regex = "1.10"
+uuid = { version = "1", features = ["v4"] }
+once_cell = "1"
+dashmap = "6"
 
 [dev-dependencies]
 http-body-util = "0.1"
