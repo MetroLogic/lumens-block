@@ -55,9 +55,13 @@ interface OperandPickerProps {
   value: Operand
   onChange: (op: Operand) => void
   disabled?: boolean
+  /** Argument names selectable in addition to the built-in invocation args. */
+  extraArgs?: string[]
 }
 
-function OperandPicker({ id, value, onChange, disabled }: OperandPickerProps) {
+function OperandPicker({ id, value, onChange, disabled, extraArgs }: OperandPickerProps) {
+  const argOptions = [...INVOCATION_ARGS, ...(extraArgs ?? []).filter((arg) => !INVOCATION_ARGS.includes(arg))]
+
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newType = e.target.value as OperandType
     onChange({ type: newType, value: "", constantKind: newType === "constant" ? "string" : undefined })
@@ -166,7 +170,7 @@ function OperandPicker({ id, value, onChange, disabled }: OperandPickerProps) {
           className={`${inputClass} cursor-pointer ${isInvalid ? "ring-2 ring-red-400" : ""}`}
         >
           <option value="">-- pick arg --</option>
-          {INVOCATION_ARGS.map((arg) => (
+          {argOptions.map((arg) => (
             <option key={arg} value={arg}>
               {arg}
             </option>
@@ -188,12 +192,18 @@ export interface ConditionExpressionBuilderProps {
   onChange: (expr: ConditionExpression) => void
   /** When true, all controls are read-only */
   disabled?: boolean
+  /**
+   * Extra argument names offered by the "Argument" operand type — e.g. the
+   * `returnBinding` of an upstream CrossContractCall block.
+   */
+  extraArgs?: string[]
 }
 
 export default function ConditionExpressionBuilder({
   value,
   onChange,
   disabled = false,
+  extraArgs,
 }: ConditionExpressionBuilderProps) {
   const expr: ConditionExpression = value ?? {
     left: { ...DEFAULT_OPERAND },
@@ -222,6 +232,7 @@ export default function ConditionExpressionBuilder({
           value={expr.left}
           onChange={handleLeftChange}
           disabled={disabled}
+          extraArgs={extraArgs}
         />
 
         {/* Operator */}
@@ -252,6 +263,7 @@ export default function ConditionExpressionBuilder({
           value={expr.right}
           onChange={handleRightChange}
           disabled={disabled}
+          extraArgs={extraArgs}
         />
       </div>
 

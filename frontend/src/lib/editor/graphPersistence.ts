@@ -3,6 +3,7 @@ import type { ContractGraph } from "@/lib/compile/schema"
 import { normalizeReactFlowGraph, validateContractGraph } from "@/lib/compile/validate"
 
 export const GRAPH_STORAGE_KEY = "lumens-block:graph"
+export const DEPLOYED_GRAPH_STORAGE_KEY = "lumens-block:deployedGraph"
 export const GRAPH_EXPORT_FILENAME = "contract-graph.json"
 export const GRAPH_AUTOSAVE_DEBOUNCE_MS = 500
 
@@ -69,6 +70,38 @@ export function clearGraphStorage(): void {
     window.localStorage.removeItem(GRAPH_STORAGE_KEY)
   } catch {
     // ignore
+  }
+}
+
+/**
+ * Persist the graph exactly as it was deployed, under a separate key from the
+ * canvas autosave so the last-deployed snapshot can be diffed against later.
+ */
+export function saveDeployedSnapshot(graph: ContractGraph): void {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(DEPLOYED_GRAPH_STORAGE_KEY, JSON.stringify(graph))
+  } catch {
+    // Quota exceeded or private browsing — ignore; the diff check degrades gracefully.
+  }
+}
+
+/**
+ * Load the last-deployed graph snapshot, or null when nothing has been
+ * deployed yet (first deploy) or the stored value is unreadable.
+ */
+export function loadDeployedSnapshot(): ContractGraph | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    const raw = window.localStorage.getItem(DEPLOYED_GRAPH_STORAGE_KEY)
+    if (!raw) return null
+
+    const parsed: unknown = JSON.parse(raw)
+    const result = validateContractGraph(parsed, undefined, { skipStructureValidation: true })
+    return result.ok ? result.graph : null
+  } catch {
+    return null
   }
 }
 

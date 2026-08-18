@@ -5,6 +5,12 @@ import {
   hasFunctionEntries,
   type FunctionGroup,
 } from "./functions"
+  collectCrossContractImports,
+  crossContractParams,
+  emitCrossContractCall,
+  emitCrossContractClients,
+  getCrossContractNodes,
+} from "./crossContract"
 import { validateGraphStructure } from "./validate"
 
 export interface CodegenResult {
@@ -17,6 +23,24 @@ export interface FunctionParam {
   name: string
   rustType: string
 }
+
+/** Contract error type emitted for graphs containing a Condition block. */
+export const GENERATED_ERROR_ENUM = `#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum GeneratedError {
+    /// A Condition block guard evaluated to false.
+    ConditionFailed = 1,
+}`
+
+const EXECUTABLE_TYPES = new Set<BlockType>([
+  "Auth",
+  "Transfer",
+  "Storage",
+  "Event",
+  "Condition",
+  "CrossContractCall",
+])
 
 /**
  * Returns executable nodes in breadth-first execution order.
@@ -84,7 +108,7 @@ export function getFunctionParamsFromGraph(graph: ContractGraph): FunctionParam[
 
   const executionOrder = getExecutionOrder(graph)
   const blockTypes = new Set(executionOrder.map((n) => n.type))
-  return deriveParams(blockTypes)
+  return deriveParams(blockTypes, executionOrder)
 }
 
 /**
@@ -130,7 +154,7 @@ export function paramRustTypeToInputType(rustType: string): "address" | "number"
   }
 }
 
-function deriveParams(blockTypes: Set<BlockType>): FunctionParam[] {
+function deriveParams(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = []): FunctionParam[] {
   const params: FunctionParam[] = [{ name: "env", rustType: "Env" }]
 
   if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
@@ -160,10 +184,13 @@ function deriveParams(blockTypes: Set<BlockType>): FunctionParam[] {
     params.push({ name: "event_name", rustType: "Symbol" })
   }
 
+  // Arguments and target addresses required by CrossContractCall blocks.
+  params.push(...crossContractParams(nodes, params.map((param) => param.name)))
+
   return params
 }
 
-function deriveImports(blockTypes: Set<BlockType>): string[] {
+function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = []): string[] {
   const imports = new Set<string>(["contract", "contractimpl", "Env"])
 
   if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
@@ -180,16 +207,27 @@ function deriveImports(blockTypes: Set<BlockType>): string[] {
   }
 
   if (blockTypes.has("Condition")) {
+    imports.add("contracterror")
     imports.add("panic_with_error")
+  }
+
+  for (const name of collectCrossContractImports(nodes)) {
+    imports.add(name)
   }
 
   return Array.from(imports).sort()
 }
 
-function emitBlock(node: ContractGraphNode): string {
+function emitBlock(node: ContractGraphNode, crossCallIndexes: Map<string, number>): string {
   const label = node.data.label.replace(/"/g, '\\"')
 
   switch (node.type) {
+    case "CrossContractCall": {
+      const index = crossCallIndexes.get(node.id) ?? 0
+      const fn = node.data.params?.targetFunction?.trim()
+      return emitCrossContractCall(node, index, fn ? `${label} → ${fn}()` : label)
+    }
+
     case "Auth":
       return `        // ${label}\n        caller.require_auth();`
 
@@ -208,10 +246,10 @@ function emitBlock(node: ContractGraphNode): string {
       const expr = node.data.params?.conditionExpression
       if (expr) {
         const rustCondition = buildRustCondition(expr)
-        return `        // ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+        return `        // ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
       }
       // Legacy fallback (no expression defined yet)
-      return `        // ${label}\n        if !release {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+      return `        // ${label}\n        if !release {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
     }
 
     default:
@@ -286,14 +324,26 @@ export function generateContractSource(graph: ContractGraph): CodegenResult {
   const executionOrder = getExecutionOrder(graph)
   const blockTypes = new Set(executionOrder.map((n) => n.type))
 
-  const imports = deriveImports(blockTypes)
-  const params = deriveParams(blockTypes)
+  const imports = deriveImports(blockTypes, executionOrder)
+  const params = deriveParams(blockTypes, executionOrder)
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
-  const body = executionOrder.map(emitBlock).filter(Boolean).join("\n\n")
+
+  const crossCallIndexes = new Map(
+    getCrossContractNodes(executionOrder).map((node, index) => [node.id, index])
+  )
+  const body = executionOrder
+    .map((node) => emitBlock(node, crossCallIndexes))
+    .filter(Boolean)
+    .join("\n\n")
+
+  const clients = emitCrossContractClients(executionOrder)
+  const declarations = [blockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
+    .filter(Boolean)
+    .join("\n\n")
 
   const source = `#![no_std]
 use soroban_sdk::{${imports.join(", ")}};
-
+${declarations ? `\n${declarations}\n` : ""}
 #[contract]
 pub struct LumensBlockGenerated;
 

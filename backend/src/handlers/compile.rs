@@ -33,6 +33,7 @@ pub struct CompileResponse {
     pub source_hash: String,
     #[serde(rename = "sizeBytes")]
     pub size_bytes: usize,
+    pub cached: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -53,6 +54,7 @@ pub struct CompileErrorDetail {
 #[serde(rename_all = "camelCase")]
 pub struct AsyncCompileResponse {
     pub job_id: String,
+    pub cached: bool,
 }
 
 // ─── Input validation (shared by both sync and async paths) ──────────────────
@@ -97,12 +99,22 @@ fn validate_source(source: &str) -> Result<(), (StatusCode, Json<CompileErrorRes
 /// responding.  The HTTP response shape is identical to the old direct-spawn
 /// implementation so no client changes are required.
 pub async fn compile(
-    State(pool): State<std::sync::Arc<WorkerPool>>,
+    State(state): State<crate::AppState>,
     Json(req): Json<CompileRequest>,
 ) -> Result<Json<CompileResponse>, (StatusCode, Json<CompileErrorResponse>)> {
     validate_source(&req.source)?;
 
     let source_hash = compute_source_hash(&req.source);
+    
+    if let Some((wasm, size_bytes)) = state.cache.get(&source_hash).await {
+        return Ok(Json(CompileResponse {
+            wasm,
+            source_hash,
+            size_bytes,
+            cached: true,
+        }));
+    }
+    
     let job_id = Uuid::new_v4().to_string();
 
     let (result_tx, result_rx) = oneshot::channel::<CompileJobResult>();
@@ -111,12 +123,12 @@ pub async fn compile(
     let job = CompileJob {
         job_id: job_id.clone(),
         source: req.source,
-        source_hash,
+        source_hash: source_hash.clone(),
         result_tx,
         progress_tx,
     };
 
-    pool.submit(job).await.map_err(|_| {
+    state.pool.submit(job).await.map_err(|_| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(CompileErrorResponse {
@@ -135,11 +147,15 @@ pub async fn compile(
             wasm,
             source_hash,
             size_bytes,
-        }) => Ok(Json(CompileResponse {
-            wasm,
-            source_hash,
-            size_bytes,
-        })),
+        }) => {
+            state.cache.insert(&source_hash, wasm.clone(), size_bytes).await;
+            Ok(Json(CompileResponse {
+                wasm,
+                source_hash,
+                size_bytes,
+                cached: false,
+            }))
+        }
 
         Ok(CompileJobResult::Failure {
             code,
@@ -188,12 +204,24 @@ pub async fn compile(
 /// immediately.  The client should open `GET /compile/:job_id/progress` to
 /// stream SSE events.
 pub async fn compile_async(
-    State(pool): State<std::sync::Arc<WorkerPool>>,
+    State(state): State<crate::AppState>,
     Json(req): Json<CompileRequest>,
 ) -> Result<(StatusCode, Json<AsyncCompileResponse>), (StatusCode, Json<CompileErrorResponse>)> {
     validate_source(&req.source)?;
 
     let source_hash = compute_source_hash(&req.source);
+    
+    // Check if it's already in the cache
+    if let Some(_) = state.cache.get(&source_hash).await {
+        return Ok((
+            StatusCode::ACCEPTED,
+            Json(AsyncCompileResponse {
+                job_id: Uuid::new_v4().to_string(), // Fake job ID since we're skipping work
+                cached: true,
+            }),
+        ));
+    }
+    
     let job_id = Uuid::new_v4().to_string();
 
     // The async path doesn't need a oneshot result — the SSE stream delivers
@@ -209,12 +237,12 @@ pub async fn compile_async(
     let job = CompileJob {
         job_id: job_id.clone(),
         source: req.source,
-        source_hash,
+        source_hash: source_hash.clone(),
         result_tx,
         progress_tx,
     };
 
-    pool.submit(job).await.map_err(|_| {
+    state.pool.submit(job).await.map_err(|_| {
         JOB_REGISTRY.remove(&job_id);
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -229,7 +257,7 @@ pub async fn compile_async(
         )
     })?;
 
-    Ok((StatusCode::ACCEPTED, Json(AsyncCompileResponse { job_id })))
+    Ok((StatusCode::ACCEPTED, Json(AsyncCompileResponse { job_id, cached: false })))
 }
 
 // ─── Job registry ─────────────────────────────────────────────────────────────

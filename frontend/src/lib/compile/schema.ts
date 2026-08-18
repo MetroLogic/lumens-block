@@ -51,6 +51,7 @@ export const BLOCK_TYPES = [
   "Auth",
   "FunctionEntry",
   "FunctionReturn",
+  "CrossContractCall",
 ] as const
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
@@ -100,6 +101,43 @@ export const RUST_IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/
  * could close the signature and inject statements — `;`, `{`, `}` and friends.
  */
 export const RUST_TYPE_PATTERN = /^[A-Za-z0-9_<>,:&()[\] ]+$/
+/** Rust primitive types accepted for cross-contract call arguments and return values. */
+export const CROSS_CONTRACT_TYPES = ["Address", "i128", "Symbol", "bool"] as const
+
+export type CrossContractType = (typeof CROSS_CONTRACT_TYPES)[number]
+
+/** Where the value of a cross-contract argument comes from. */
+export const CROSS_CONTRACT_ARG_SOURCES = ["literal", "storageKey", "invocationArg"] as const
+
+export type CrossContractArgSource = (typeof CROSS_CONTRACT_ARG_SOURCES)[number]
+
+/** A single ordered argument passed to an external contract function. */
+export interface CrossContractArg {
+  /** Parameter name used in the generated client trait (e.g. "amount"). */
+  name: string
+  /**
+   * The operand value.
+   * - "literal"        → the literal itself (e.g. "100", "true", "GC…"/"C…" address, symbol text)
+   * - "storageKey"     → the instance-storage key to read from
+   * - "invocationArg"  → the name of an `execute` parameter (e.g. "caller", "amount")
+   */
+  value: string
+  /** Rust type of the argument in the target contract's signature. */
+  rustType: string
+  /** How `value` is sourced. Defaults to "literal" when omitted. */
+  source?: CrossContractArgSource
+}
+
+export function isCrossContractType(value: unknown): value is CrossContractType {
+  return typeof value === "string" && CROSS_CONTRACT_TYPES.includes(value as CrossContractType)
+}
+
+export function isCrossContractArgSource(value: unknown): value is CrossContractArgSource {
+  return (
+    typeof value === "string" &&
+    CROSS_CONTRACT_ARG_SOURCES.includes(value as CrossContractArgSource)
+  )
+}
 
 export interface BlockParameters {
   /** Token contract address for Transfer blocks (synced from `asset.contractId` when set) */
@@ -132,6 +170,19 @@ export interface BlockParameters {
    * `returnType` so the generated crate still compiles.
    */
   returnValue?: string
+  /** Deployed contract address invoked by a CrossContractCall block. */
+  targetContractId?: string
+  /** Function name invoked on the target contract. */
+  targetFunction?: string
+  /** Ordered argument list passed to `targetFunction`. */
+  targetArgs?: CrossContractArg[]
+  /**
+   * Name the return value is bound to in the generated source.
+   * When set, downstream Condition blocks can reference it as an `invocationArg` operand.
+   */
+  returnBinding?: string
+  /** Rust type of the return value bound by `returnBinding`. Defaults to "i128". */
+  returnType?: string
 }
 
 export interface ContractGraphNode {

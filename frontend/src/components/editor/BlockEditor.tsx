@@ -46,6 +46,7 @@ const nodeTypes = {
   Auth: BlockNode,
   FunctionEntry: BlockNode,
   FunctionReturn: BlockNode,
+  CrossContractCall: BlockNode,
   default: BlockNode,
 }
 
