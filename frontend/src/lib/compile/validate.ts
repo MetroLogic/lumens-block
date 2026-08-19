@@ -477,6 +477,23 @@ export function validateGraphStructure(graph: ContractGraph): CompileError | nul
     if (callError) return callError
   }
 
+  // Read-mode Storage nodes must have a non-empty storageKey.
+  for (const node of executableNodes) {
+    if (node.type !== "Storage") continue
+    const mode = node.data.params?.storageMode ?? "write"
+    if (mode === "read") {
+      const key = typeof node.data.params?.storageKey === "string"
+        ? node.data.params.storageKey.trim()
+        : ""
+      if (key === "") {
+        return invalid(
+          "INCOMPLETE_BLOCK",
+          `Storage block "${node.data.label}" (node "${node.id}") is in read mode but has no storageKey.`
+        )
+      }
+    }
+  }
+
   return null
 }
 

@@ -211,3 +211,194 @@ describe("compileGraph — CrossContractCall", () => {
     expect(order).toEqual(["auth", "call"])
   })
 })
+
+describe("compileGraph — Storage read/write mode", () => {
+  it("write mode with instance scope emits correct set call", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Store", params: { storageKey: "balance", storageMode: "write", storageScope: "instance" } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "s1" }],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain('env.storage().instance().set(&symbol_short!("balance"), &value);')
+  })
+
+  it("write mode with persistent scope emits correct set call", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Store", params: { storageKey: "balance", storageMode: "write", storageScope: "persistent" } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "s1" }],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain('env.storage().persistent().set(&symbol_short!("balance"), &value);')
+  })
+
+  it("write mode with temporary scope emits correct set call", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Store", params: { storageKey: "balance", storageMode: "write", storageScope: "temporary" } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "s1" }],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain('env.storage().temporary().set(&symbol_short!("balance"), &value);')
+  })
+
+  it("read mode emits a pub fn get_ getter with i128 return type", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "auth", type: "Auth", data: { label: "Auth" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Get Balance", params: { storageKey: "balance", storageMode: "read", storageReturnType: "i128" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "auth" },
+        { id: "e2", source: "auth", target: "s1" },
+      ],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn get_balance(env: Env) -> i128")
+    expect(code).toContain('.get::<_, i128>(&symbol_short!("balance"))')
+    expect(code).toContain(".unwrap_or(0)")
+    // Should NOT emit a set call for read mode
+    expect(code).not.toContain(".set(")
+  })
+
+  it("read mode with bool return type emits correct getter", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "auth", type: "Auth", data: { label: "Auth" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Get Flag", params: { storageKey: "flag", storageMode: "read", storageReturnType: "bool" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "auth" },
+        { id: "e2", source: "auth", target: "s1" },
+      ],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn get_flag(env: Env) -> bool")
+    expect(code).toContain('.get::<_, bool>(&symbol_short!("flag"))')
+    expect(code).toContain(".unwrap_or(false)")
+  })
+
+  it("read mode with Symbol return type emits correct getter", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "auth", type: "Auth", data: { label: "Auth" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Get Name", params: { storageKey: "name", storageMode: "read", storageReturnType: "Symbol" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "auth" },
+        { id: "e2", source: "auth", target: "s1" },
+      ],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn get_name(env: Env) -> Symbol")
+    expect(code).toContain('.get::<_, Symbol>(&symbol_short!("name"))')
+  })
+
+  it("read mode with Address return type emits correct getter", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "auth", type: "Auth", data: { label: "Auth" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Get Owner", params: { storageKey: "owner", storageMode: "read", storageReturnType: "Address" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "auth" },
+        { id: "e2", source: "auth", target: "s1" },
+      ],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn get_owner(env: Env) -> Address")
+    expect(code).toContain('.get::<_, Address>(&symbol_short!("owner"))')
+  })
+
+  it("de-duplicates read-mode nodes with the same storageKey", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "auth", type: "Auth", data: { label: "Auth" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Get Balance 1", params: { storageKey: "balance", storageMode: "read", storageReturnType: "i128" } },
+        },
+        {
+          id: "s2",
+          type: "Storage",
+          data: { label: "Get Balance 2", params: { storageKey: "balance", storageMode: "read", storageReturnType: "i128" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "auth" },
+        { id: "e2", source: "auth", target: "s1" },
+        { id: "e3", source: "s1", target: "s2" },
+      ],
+    }
+    const code = compileGraph(graph)
+    // Only one getter should be emitted
+    const matches = code.match(/pub fn get_balance/g)
+    expect(matches).toHaveLength(1)
+  })
+
+  it("graph with both write and read Storage nodes emits both set and getter", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "s1",
+          type: "Storage",
+          data: { label: "Write", params: { storageKey: "balance", storageMode: "write", storageScope: "instance" } },
+        },
+        {
+          id: "s2",
+          type: "Storage",
+          data: { label: "Read", params: { storageKey: "balance", storageMode: "read", storageReturnType: "i128" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "s1" },
+        { id: "e2", source: "s1", target: "s2" },
+      ],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain('env.storage().instance().set(&symbol_short!("balance"), &value);')
+    expect(code).toContain("pub fn get_balance(env: Env) -> i128")
+  })
+})
