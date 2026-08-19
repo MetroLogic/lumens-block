@@ -1,21 +1,67 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Json, Path, State},
     http::StatusCode,
-    response::{
-        sse::{Event, KeepAlive, Sse},
-        IntoResponse,
-    },
-    Json,
+    response::{sse::Event, IntoResponse, sse::KeepAlive, sse::Sse},
+    Json as JsonPayload,
 };
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::convert::Infallible;
 use std::env;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
 use tokio::fs;
 use tokio::process::Command;
+use tokio::sync::{broadcast, oneshot};
 use tokio::time::timeout;
+use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
+
+use crate::worker_pool::{
+    CompileJob, CompileJobResult, CompileProgress, WorkerPool, compute_source_hash,
+};
+
+// ─── Shared request / response types ─────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct CompileRequest {
+    pub source: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompileResponse {
+    pub wasm: String,
+    #[serde(rename = "sourceHash")]
+    pub source_hash: String,
+    #[serde(rename = "sizeBytes")]
+    pub size_bytes: usize,
+    pub cached: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompileErrorResponse {
+    pub error: CompileErrorDetail,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompileErrorDetail {
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Vec<String>>,
+}
+
+/// Response returned by `POST /compile/async`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsyncCompileResponse {
+    pub job_id: String,
+    pub cached: bool,
+}
+
+// ─── Configuration helpers ───────────────────────────────────────────────────
 
 fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
@@ -55,6 +101,8 @@ fn compile_work_dir() -> PathBuf {
     PathBuf::from(env_or("COMPILE_WORK_DIR", "/tmp/lumens-compile"))
 }
 
+// ─── Input validation (shared by both sync and async paths) ──────────────────
+
 const FORBIDDEN_PATTERNS: &[&str] = &[
     "build.rs",
     "include!(",
@@ -65,55 +113,15 @@ const FORBIDDEN_PATTERNS: &[&str] = &[
     "std::net",
     "#[proc_macro",
 ];
-use std::convert::Infallible;
-use tokio::sync::{broadcast, oneshot};
-use tokio_stream::{wrappers::BroadcastStream, StreamExt};
-use uuid::Uuid;
-
-use crate::worker_pool::{
-    CompileJob, CompileJobResult, CompileProgress, WorkerPool, compute_source_hash,
-};
-
-const MAX_SOURCE_LEN: usize = 1_000_000; // 1 MB
-
-// ─── Shared request / response types ─────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct CompileRequest {
-    pub source: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CompileResponse {
-    pub wasm: String,
-    #[serde(rename = "sourceHash")]
-    pub source_hash: String,
-    #[serde(rename = "sizeBytes")]
-    pub size_bytes: usize,
-    pub cached: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CompileErrorResponse {
-    pub error: CompileErrorDetail,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CompileErrorDetail {
-    pub code: String,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<Vec<String>>,
-}
 
 fn err(
     status: StatusCode,
     code: &str,
     message: String,
-) -> (StatusCode, Json<CompileErrorResponse>) {
+) -> (StatusCode, JsonPayload<CompileErrorResponse>) {
     (
         status,
-        Json(CompileErrorResponse {
+        JsonPayload(CompileErrorResponse {
             error: CompileErrorDetail {
                 code: code.into(),
                 message,
@@ -128,10 +136,10 @@ fn err_with_details(
     code: &str,
     message: String,
     details: Vec<String>,
-) -> (StatusCode, Json<CompileErrorResponse>) {
+) -> (StatusCode, JsonPayload<CompileErrorResponse>) {
     (
         status,
-        Json(CompileErrorResponse {
+        JsonPayload(CompileErrorResponse {
             error: CompileErrorDetail {
                 code: code.into(),
                 message,
@@ -141,7 +149,7 @@ fn err_with_details(
     )
 }
 
-fn validate_source(source: &str) -> Result<(), (StatusCode, Json<CompileErrorResponse>)> {
+fn validate_source(source: &str) -> Result<(), (StatusCode, JsonPayload<CompileErrorResponse>)> {
     if source.trim().is_empty() {
         return Err(err(
             StatusCode::BAD_REQUEST,
@@ -179,6 +187,8 @@ fn validate_source(source: &str) -> Result<(), (StatusCode, Json<CompileErrorRes
     Ok(())
 }
 
+// ─── Sandboxed compilation template ──────────────────────────────────────────
+
 const TEMPLATE_CARGO_TOML: &str = r#"[package]
 name = "lumens_block_generated"
 version = "0.1.0"
@@ -189,16 +199,16 @@ crate-type = ["cdylib"]
 
 [dependencies]
 soroban-sdk = { version = "21.0.0", features = ["alloc"] }
-/// Response returned by `POST /compile/async`.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AsyncCompileResponse {
-    pub job_id: String,
-    pub cached: bool,
+"#;
+
+fn source_hash(source: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(source.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
-// ─── Input validation (shared by both sync and async paths) ──────────────────
-
+/// Applies Linux resource limits (CPU time + address-space) to the cargo
+/// subprocess so a malicious or runaway contract cannot exhaust the host.
 fn set_resource_limits(cmd: &mut Command) {
     #[cfg(target_os = "linux")]
     {
@@ -210,6 +220,11 @@ fn set_resource_limits(cmd: &mut Command) {
         unsafe {
             cmd.as_std_mut().pre_exec(move || {
                 use nix::sys::resource::{setrlimit, Resource};
+                use nix::unistd::setsid;
+
+                // New session => new process group, so we can kill the whole
+                // cargo tree on timeout via the negative-pid signal below.
+                let _ = setsid();
                 let _ = setrlimit(Resource::RLIMIT_CPU, cpu_secs, cpu_secs);
                 let _ = setrlimit(Resource::RLIMIT_AS, mem_bytes, mem_bytes);
                 Ok(())
@@ -218,9 +233,21 @@ fn set_resource_limits(cmd: &mut Command) {
     }
 }
 
+async fn cleanup_dir(path: &std::path::Path) {
+    let _ = fs::remove_dir_all(path).await;
+}
+
+// ─── POST /compile  (synchronous, sandboxed) ─────────────────────────────────
+
+/// Synchronous compile endpoint.
+///
+/// Writes the submitted source into an isolated temporary crate, compiles it to
+/// `wasm32-unknown-unknown` with resource limits + a wall-clock timeout, and
+/// returns the resulting WASM binary. This path performs the compilation inline
+/// with sandboxing rather than via the worker pool.
 pub async fn compile(
     Json(req): Json<CompileRequest>,
-) -> Result<Json<CompileResponse>, (StatusCode, Json<CompileErrorResponse>)> {
+) -> Result<JsonPayload<CompileResponse>, (StatusCode, JsonPayload<CompileErrorResponse>)> {
     validate_source(&req.source)?;
 
     let base_dir = compile_work_dir();
@@ -274,8 +301,8 @@ pub async fn compile(
         .arg("--release")
         .current_dir(&work_dir)
         .env("CARGO_TARGET_DIR", &target_dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     set_resource_limits(&mut cmd);
 
@@ -345,144 +372,12 @@ pub async fn compile(
             "Rust compilation failed.".into(),
             details,
         ));
-fn validate_source(source: &str) -> Result<(), (StatusCode, Json<CompileErrorResponse>)> {
-    if source.trim().is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "INVALID_PAYLOAD".into(),
-                    message: "Rust source code cannot be empty.".into(),
-                    details: None,
-                },
-            }),
-        ));
     }
 
-    if source.len() > MAX_SOURCE_LEN {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "PAYLOAD_TOO_LARGE".into(),
-                    message: format!(
-                        "Source code exceeds maximum allowed size of {MAX_SOURCE_LEN} bytes."
-                    ),
-                    details: None,
-                },
-            }),
-        ));
-    }
-
-    Ok(())
-}
-
-// ─── POST /compile  (synchronous — backwards-compatible) ─────────────────────
-
-/// Synchronous compile endpoint.
-///
-/// Submits a job to the worker pool and **awaits** the result before
-/// responding.  The HTTP response shape is identical to the old direct-spawn
-/// implementation so no client changes are required.
-pub async fn compile(
-    State(state): State<crate::AppState>,
-    Json(req): Json<CompileRequest>,
-) -> Result<Json<CompileResponse>, (StatusCode, Json<CompileErrorResponse>)> {
-    validate_source(&req.source)?;
-
-    let source_hash = compute_source_hash(&req.source);
-    
-    if let Some((wasm, size_bytes)) = state.cache.get(&source_hash).await {
-        return Ok(Json(CompileResponse {
-            wasm,
-            source_hash,
-            size_bytes,
-            cached: true,
-        }));
-    }
-    
-    let job_id = Uuid::new_v4().to_string();
-
-    let (result_tx, result_rx) = oneshot::channel::<CompileJobResult>();
-    let (progress_tx, _progress_rx) = broadcast::channel::<CompileProgress>(64);
-
-    let job = CompileJob {
-        job_id: job_id.clone(),
-        source: req.source,
-        source_hash: source_hash.clone(),
-        result_tx,
-        progress_tx,
-    };
-
-    state.pool.submit(job).await.map_err(|_| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "QUEUE_FULL".into(),
-                    message: "The compilation queue is currently full. Please try again shortly."
-                        .into(),
-                    details: None,
-                },
-            }),
-        )
-    })?;
-
-    match result_rx.await {
-        Ok(CompileJobResult::Success {
-            wasm,
-            source_hash,
-            size_bytes,
-        }) => {
-            state.cache.insert(&source_hash, wasm.clone(), size_bytes).await;
-            Ok(Json(CompileResponse {
-                wasm,
-                source_hash,
-                size_bytes,
-                cached: false,
-            }))
-        }
-
-        Ok(CompileJobResult::Failure {
-            code,
-            message,
-            details,
-        }) => {
-            let status = match code.as_str() {
-                "TIMEOUT" => StatusCode::GATEWAY_TIMEOUT,
-                "COMPILATION_FAILED" => StatusCode::UNPROCESSABLE_ENTITY,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            Err((
-                status,
-                Json(CompileErrorResponse {
-                    error: CompileErrorDetail {
-                        code,
-                        message,
-                        details: if details.is_empty() {
-                            None
-                        } else {
-                            Some(details)
-                        },
-                    },
-                }),
-            ))
-        }
-
-        Err(_) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(CompileErrorResponse {
-                error: CompileErrorDetail {
-                    code: "WORKER_DROPPED".into(),
-                    message: "The compilation worker terminated unexpectedly.".into(),
-                    details: None,
-                },
-            }),
-        )),
-    }
-}
-
-// ─── POST /compile/async  (returns jobId immediately) ─────────────────────────
+    let wasm_path = target_dir
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("lumens_block_generated.wasm");
 
     if !wasm_path.exists() {
         cleanup_dir(&work_dir).await;
@@ -490,6 +385,37 @@ pub async fn compile(
             StatusCode::INTERNAL_SERVER_ERROR,
             "WASM_NOT_FOUND",
             "Compilation succeeded but target WASM file was not found.".into(),
+        ));
+    }
+
+    let wasm_bytes = match fs::read(&wasm_path).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            cleanup_dir(&work_dir).await;
+            return Err(err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "WASM_READ_FAILED",
+                format!("Failed to read generated WASM binary: {e}"),
+            ));
+        }
+    };
+
+    cleanup_dir(&work_dir).await;
+
+    let wasm_base64 = base64::engine::general_purpose::STANDARD.encode(&wasm_bytes);
+    let source_hash = source_hash(&req.source);
+    let size_bytes = wasm_bytes.len();
+
+    Ok(JsonPayload(CompileResponse {
+        wasm: wasm_base64,
+        source_hash,
+        size_bytes,
+        cached: false,
+    }))
+}
+
+// ─── POST /compile/async  (returns jobId immediately) ─────────────────────────
+
 /// Asynchronous compile endpoint — HTTP 202 Accepted.
 ///
 /// Submits the job to the worker pool and returns `{ "jobId": "..." }`
@@ -498,22 +424,22 @@ pub async fn compile(
 pub async fn compile_async(
     State(state): State<crate::AppState>,
     Json(req): Json<CompileRequest>,
-) -> Result<(StatusCode, Json<AsyncCompileResponse>), (StatusCode, Json<CompileErrorResponse>)> {
+) -> Result<(StatusCode, JsonPayload<AsyncCompileResponse>), (StatusCode, JsonPayload<CompileErrorResponse>)> {
     validate_source(&req.source)?;
 
     let source_hash = compute_source_hash(&req.source);
-    
+
     // Check if it's already in the cache
     if let Some(_) = state.cache.get(&source_hash).await {
         return Ok((
             StatusCode::ACCEPTED,
-            Json(AsyncCompileResponse {
+            JsonPayload(AsyncCompileResponse {
                 job_id: Uuid::new_v4().to_string(), // Fake job ID since we're skipping work
                 cached: true,
             }),
         ));
     }
-    
+
     let job_id = Uuid::new_v4().to_string();
 
     // The async path doesn't need a oneshot result — the SSE stream delivers
@@ -522,11 +448,6 @@ pub async fn compile_async(
     let (result_tx, _result_rx) = oneshot::channel::<CompileJobResult>();
     let (progress_tx, _seed_rx) = broadcast::channel::<CompileProgress>(64);
 
-    let wasm_bytes = fs::read(&wasm_path).await.map_err(|e| {
-        err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "WASM_READ_FAILED",
-            format!("Failed to read generated WASM binary: {e}"),
     // Store the broadcast sender in a shared registry so the SSE handler can
     // subscribe to it.  We use the job registry defined below.
     JOB_REGISTRY.insert(job_id.clone(), progress_tx.clone());
@@ -543,7 +464,7 @@ pub async fn compile_async(
         JOB_REGISTRY.remove(&job_id);
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(CompileErrorResponse {
+            JsonPayload(CompileErrorResponse {
                 error: CompileErrorDetail {
                     code: "QUEUE_FULL".into(),
                     message: "The compilation queue is currently full. Please try again shortly."
@@ -554,7 +475,7 @@ pub async fn compile_async(
         )
     })?;
 
-    Ok((StatusCode::ACCEPTED, Json(AsyncCompileResponse { job_id, cached: false })))
+    Ok((StatusCode::ACCEPTED, JsonPayload(AsyncCompileResponse { job_id, cached: false })))
 }
 
 // ─── Job registry ─────────────────────────────────────────────────────────────
@@ -584,7 +505,7 @@ pub async fn compile_progress(Path(job_id): Path<String>) -> impl IntoResponse {
     let Some(tx) = JOB_REGISTRY.get(&job_id).map(|r| r.clone()) else {
         return (
             StatusCode::NOT_FOUND,
-            Json(serde_json::json!({
+            JsonPayload(serde_json::json!({
                 "error": {
                     "code": "JOB_NOT_FOUND",
                     "message": format!("No job with id '{job_id}' found.")
@@ -632,18 +553,7 @@ pub async fn compile_progress(Path(job_id): Path<String>) -> impl IntoResponse {
             Ok(Event::default().event(event_name).data(data))
         });
 
-    cleanup_dir(&work_dir).await;
-
-    Ok(Json(CompileResponse {
-        wasm: wasm_base64,
-        source_hash,
-        size_bytes,
-    }))
     Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response()
-}
-
-async fn cleanup_dir(path: &std::path::Path) {
-    let _ = fs::remove_dir_all(path).await;
 }
