@@ -5,7 +5,13 @@ import { Handle, Position, useNodes, useReactFlow } from "reactflow"
 import ConditionExpressionBuilder from "./ConditionExpressionBuilder"
 import AssetSelector from "./AssetSelector"
 import CrossContractCallConfig from "./CrossContractCallConfig"
-import type { BlockParameters, TransferAsset } from "@/lib/compile/schema"
+import type {
+  BlockParameters,
+  FunctionParamConfig,
+  FunctionVisibility,
+  TransferAsset,
+} from "@/lib/compile/schema"
+import { FUNCTION_VISIBILITIES, MAX_FUNCTION_PARAMS } from "@/lib/compile/schema"
 import { sanitizeRustIdent } from "@/lib/compile/crossContract"
 import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
@@ -24,6 +30,16 @@ interface BlockNodeProps {
   data: NodeData
   selected?: boolean
 }
+
+/** Short badge text shown in a node's header. */
+const BADGE_LABELS: Record<string, string> = {
+  default: "Start",
+  FunctionEntry: "Function",
+  FunctionReturn: "Return",
+}
+
+const inputClasses =
+  "w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
 
 function assetBadgeLabel(asset: TransferAsset | undefined): string | null {
   if (!asset) return null
@@ -85,11 +101,18 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
       badgeColor = "bg-purple-200/60 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
       break
     case "CrossContractCall":
+    case "FunctionEntry":
       colorClasses =
         "bg-indigo-50 border-indigo-300 text-indigo-900 shadow-indigo-100 dark:bg-indigo-950/40 dark:border-indigo-700/60 dark:text-indigo-200 dark:shadow-none"
       badgeColor = "bg-indigo-200/60 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200"
       panelBorder =
         "border-indigo-200 bg-indigo-50/80 dark:border-indigo-800 dark:bg-indigo-950/50"
+      break
+    case "FunctionReturn":
+      colorClasses =
+        "bg-teal-50 border-teal-300 text-teal-900 shadow-teal-100 dark:bg-teal-950/40 dark:border-teal-700/60 dark:text-teal-200 dark:shadow-none"
+      badgeColor = "bg-teal-200/60 text-teal-800 dark:bg-teal-900/60 dark:text-teal-200"
+      panelBorder = "border-teal-200 bg-teal-50/80 dark:border-teal-800 dark:bg-teal-950/50"
       break
     case "default":
       colorClasses =
@@ -117,6 +140,25 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
         }
       })
     )
+  }
+
+  const functionParams = data.params?.functionParams ?? []
+
+  const setFunctionParams = (next: FunctionParamConfig[]) => {
+    updateParams({ functionParams: next })
+  }
+
+  const addFunctionParam = () => {
+    if (functionParams.length >= MAX_FUNCTION_PARAMS) return
+    setFunctionParams([...functionParams, { name: "", rustType: "" }])
+  }
+
+  const updateFunctionParam = (index: number, patch: Partial<FunctionParamConfig>) => {
+    setFunctionParams(functionParams.map((p, i) => (i === index ? { ...p, ...patch } : p)))
+  }
+
+  const removeFunctionParam = (index: number) => {
+    setFunctionParams(functionParams.filter((_, i) => i !== index))
   }
 
   const handleExpressionChange = (expr: NonNullable<BlockParameters["conditionExpression"]>) => {
@@ -167,7 +209,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
         <span
           className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColor}`}
         >
-          {type === "default" ? "Start" : type}
+          {BADGE_LABELS[type] ?? type}
         </span>
         <div className="text-sm font-semibold mt-1">{data.label}</div>
         {transferBadge && (
@@ -246,6 +288,135 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
             value={data.params ?? {}}
             onChange={(patch) => updateParams(patch)}
           />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* FunctionEntry config panel — only visible when node is selected      */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "FunctionEntry" && selected && (
+        <div
+          data-testid="function-entry-panel"
+          className={`border-t-2 rounded-b-xl px-3 py-3 min-w-[260px] ${panelBorder}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+            Function Signature
+          </p>
+
+          <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-300">
+            Name
+          </label>
+          <input
+            data-testid="function-name-input"
+            value={data.params?.functionName ?? ""}
+            placeholder="deposit"
+            onChange={(e) => updateParams({ functionName: e.target.value })}
+            className={inputClasses}
+          />
+
+          <label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-slate-300">
+            Visibility
+          </label>
+          <select
+            data-testid="function-visibility-select"
+            value={data.params?.visibility ?? "pub"}
+            onChange={(e) => updateParams({ visibility: e.target.value as FunctionVisibility })}
+            className={inputClasses}
+          >
+            {FUNCTION_VISIBILITIES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300">
+              Parameters ({functionParams.length}/{MAX_FUNCTION_PARAMS})
+            </span>
+            <button
+              data-testid="function-param-add"
+              disabled={functionParams.length >= MAX_FUNCTION_PARAMS}
+              onClick={addFunctionParam}
+              className="rounded border border-indigo-300 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 disabled:opacity-40 dark:border-indigo-700 dark:text-indigo-300"
+            >
+              + Add
+            </button>
+          </div>
+
+          {functionParams.map((param, index) => (
+            <div key={index} className="mt-1.5 flex items-center gap-1">
+              <input
+                data-testid={`function-param-name-${index}`}
+                value={param.name}
+                placeholder="amount"
+                onChange={(e) => updateFunctionParam(index, { name: e.target.value })}
+                className={inputClasses}
+              />
+              <input
+                data-testid={`function-param-type-${index}`}
+                value={param.rustType}
+                placeholder="i128"
+                onChange={(e) => updateFunctionParam(index, { rustType: e.target.value })}
+                className={inputClasses}
+              />
+              <button
+                data-testid={`function-param-remove-${index}`}
+                onClick={() => removeFunctionParam(index)}
+                aria-label={`Remove parameter ${index + 1}`}
+                className="rounded px-1.5 py-1 text-[10px] text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          <p className="mt-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+            `env: Env` is always the first argument and does not need declaring.
+          </p>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* FunctionReturn config panel — only visible when node is selected     */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "FunctionReturn" && selected && (
+        <div
+          data-testid="function-return-panel"
+          className={`border-t-2 rounded-b-xl px-3 py-3 min-w-[240px] ${panelBorder}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">
+            Return
+          </p>
+
+          <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-300">
+            Type
+          </label>
+          <input
+            data-testid="function-return-type-input"
+            value={data.params?.returnType ?? ""}
+            placeholder="()"
+            onChange={(e) => updateParams({ returnType: e.target.value })}
+            className={inputClasses}
+          />
+
+          <label className="mt-2 block text-[10px] font-medium text-slate-600 dark:text-slate-300">
+            Value
+          </label>
+          <input
+            data-testid="function-return-value-input"
+            value={data.params?.returnValue ?? ""}
+            placeholder="amount"
+            onChange={(e) => updateParams({ returnValue: e.target.value })}
+            className={inputClasses}
+          />
+          <p className="mt-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+            Leave the value empty to emit a zero value for the declared type.
+          </p>
         </div>
       )}
 

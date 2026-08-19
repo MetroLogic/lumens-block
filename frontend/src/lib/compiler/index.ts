@@ -13,6 +13,11 @@ import {
   emitCrossContractClients,
   getCrossContractNodes,
 } from "../compile/crossContract"
+import {
+  collectFunctionGroups,
+  hasFunctionEntries,
+  type FunctionGroup,
+} from "../compile/functions"
 
 export type { ContractGraph, ContractGraphNode, ContractGraphEdge } from "../compile/schema"
 
@@ -162,6 +167,10 @@ export function topologicalSort(
  * Generates Soroban Rust source code from each node type in topological order.
  */
 export function compileGraph(graph: ContractGraph, options?: CompileGraphOptions): string {
+  if (hasFunctionEntries(graph)) {
+    return compileFunctionGroups(graph, options)
+  }
+
   const executionOrder = topologicalSort(graph, options)
   const blockTypes = new Set(executionOrder.map((n) => n.type))
 
@@ -196,6 +205,115 @@ ${body.length > 0 ? body : "        // No executable nodes"}
     }
 }
 `
+}
+
+/**
+ * Emits one `pub fn` per FunctionEntry into a single `#[contractimpl]` block.
+ *
+ * Shares `collectFunctionGroups` with `compile/codegen` so the editor preview
+ * and the WASM compile path always agree on what a graph means.
+ */
+function compileFunctionGroups(graph: ContractGraph, options?: CompileGraphOptions): string {
+  const collected = collectFunctionGroups(graph)
+  if (!collected.ok) {
+    throw new Error(collected.error.message)
+  }
+
+  const { groups } = collected
+  const claimed = new Set<string>()
+  for (const group of groups) {
+    claimed.add(group.entry.id)
+    claimed.add(group.returnNode.id)
+    for (const node of group.body) claimed.add(node.id)
+  }
+
+  for (const node of graph.nodes) {
+    if (claimed.has(node.id) || node.type === "default") continue
+    const warningMsg = `Warning: Disconnected node "${node.id}" (${node.data?.label ?? node.type}) does not belong to any function.`
+    options?.onWarning?.(warningMsg)
+    console.warn(warningMsg)
+  }
+
+  const allBlockTypes = new Set<BlockType>()
+  for (const group of groups) {
+    for (const node of group.body) allBlockTypes.add(node.type)
+  }
+
+  const allBodyNodes = groups.flatMap((group) => group.body)
+
+  const imports = deriveImports(allBlockTypes, allBodyNodes)
+  const needsSymbol = groups.some(
+    (g) => g.returnValue !== null && g.returnValue.includes("symbol_short!")
+  )
+  if (needsSymbol && !imports.includes("symbol_short")) {
+    imports.push("Symbol", "symbol_short")
+    imports.sort()
+  }
+
+  const functions = groups.map(emitFunctionGroup).join("\n\n")
+
+  const clients = emitCrossContractClients(allBodyNodes)
+  const declarations = [allBlockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
+    .filter(Boolean)
+    .join("\n\n")
+
+  return `#![no_std]
+use soroban_sdk::{${imports.join(", ")}};
+${declarations ? `\n${declarations}\n` : ""}
+#[contract]
+pub struct LumensBlockContract;
+
+#[contractimpl]
+impl LumensBlockContract {
+${functions}
+}
+`
+}
+
+/** Renders one resolved function group as a Rust method. */
+function emitFunctionGroup(group: FunctionGroup): string {
+  const params: Array<{ name: string; rustType: string }> = [{ name: "env", rustType: "Env" }]
+  const seen = new Set<string>(["env"])
+
+  for (const declared of group.declaredParams) {
+    if (seen.has(declared.name)) continue
+    seen.add(declared.name)
+    params.push({ name: declared.name, rustType: declared.rustType })
+  }
+
+  // Blocks emit code against implicit names like `caller` and `amount`; any the
+  // author did not declare still has to appear in the signature.
+  const blockTypes = new Set(group.body.map((n) => n.type))
+  for (const derived of deriveParams(blockTypes, group.body)) {
+    if (seen.has(derived.name)) continue
+    seen.add(derived.name)
+    params.push(derived)
+  }
+
+  const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
+  const returnClause = group.returnType === "()" ? "" : ` -> ${group.returnType}`
+
+  // Numbered per function: each declares its own `target_contract` parameters.
+  const crossCallIndexes = new Map(
+    getCrossContractNodes(group.body).map((node, index) => [node.id, index])
+  )
+
+  const statements = group.body
+    .map((node) => emitNodeCode(node, crossCallIndexes))
+    .filter(Boolean)
+  if (group.returnValue !== null) {
+    statements.push(`        ${group.returnValue}`)
+  }
+  if (statements.length === 0) {
+    statements.push("        // No executable nodes")
+  }
+
+  const label = group.entry.data.label.replace(/"/g, '\\"')
+
+  return `    /// Generated from FunctionEntry "${label}".
+    ${group.visibility} fn ${group.name}(${paramList})${returnClause} {
+${statements.join("\n\n")}
+    }`
 }
 
 function deriveParams(
