@@ -252,6 +252,8 @@ function emitStorageGetters(nodes: ContractGraphNode[]): string {
   }
 
   return fns.join("\n\n")
+}
+
 /**
  * Emits one `pub fn` per FunctionEntry into a single `#[contractimpl]` block.
  *
