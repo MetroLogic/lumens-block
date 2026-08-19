@@ -5,11 +5,6 @@ import {
   ContractGraphNode,
   Operand,
 } from "../compile/schema"
-import {
-  collectFunctionGroups,
-  hasFunctionEntries,
-  type FunctionGroup,
-} from "../compile/functions"
 import { GENERATED_ERROR_ENUM } from "../compile/codegen"
 import {
   collectCrossContractImports,
@@ -18,6 +13,11 @@ import {
   emitCrossContractClients,
   getCrossContractNodes,
 } from "../compile/crossContract"
+import {
+  collectFunctionGroups,
+  hasFunctionEntries,
+  type FunctionGroup,
+} from "../compile/functions"
 
 export type { ContractGraph, ContractGraphNode, ContractGraphEdge } from "../compile/schema"
 
@@ -239,7 +239,9 @@ function compileFunctionGroups(graph: ContractGraph, options?: CompileGraphOptio
     for (const node of group.body) allBlockTypes.add(node.type)
   }
 
-  const imports = deriveImports(allBlockTypes)
+  const allBodyNodes = groups.flatMap((group) => group.body)
+
+  const imports = deriveImports(allBlockTypes, allBodyNodes)
   const needsSymbol = groups.some(
     (g) => g.returnValue !== null && g.returnValue.includes("symbol_short!")
   )
@@ -250,9 +252,14 @@ function compileFunctionGroups(graph: ContractGraph, options?: CompileGraphOptio
 
   const functions = groups.map(emitFunctionGroup).join("\n\n")
 
+  const clients = emitCrossContractClients(allBodyNodes)
+  const declarations = [allBlockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
+    .filter(Boolean)
+    .join("\n\n")
+
   return `#![no_std]
 use soroban_sdk::{${imports.join(", ")}};
-
+${declarations ? `\n${declarations}\n` : ""}
 #[contract]
 pub struct LumensBlockContract;
 
@@ -277,7 +284,7 @@ function emitFunctionGroup(group: FunctionGroup): string {
   // Blocks emit code against implicit names like `caller` and `amount`; any the
   // author did not declare still has to appear in the signature.
   const blockTypes = new Set(group.body.map((n) => n.type))
-  for (const derived of deriveParams(blockTypes)) {
+  for (const derived of deriveParams(blockTypes, group.body)) {
     if (seen.has(derived.name)) continue
     seen.add(derived.name)
     params.push(derived)
@@ -286,7 +293,14 @@ function emitFunctionGroup(group: FunctionGroup): string {
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
   const returnClause = group.returnType === "()" ? "" : ` -> ${group.returnType}`
 
-  const statements = group.body.map(emitNodeCode).filter(Boolean)
+  // Numbered per function: each declares its own `target_contract` parameters.
+  const crossCallIndexes = new Map(
+    getCrossContractNodes(group.body).map((node, index) => [node.id, index])
+  )
+
+  const statements = group.body
+    .map((node) => emitNodeCode(node, crossCallIndexes))
+    .filter(Boolean)
   if (group.returnValue !== null) {
     statements.push(`        ${group.returnValue}`)
   }
@@ -302,7 +316,10 @@ ${statements.join("\n\n")}
     }`
 }
 
-function deriveParams(blockTypes: Set<BlockType>): Array<{ name: string; rustType: string }> {
+function deriveParams(
+  blockTypes: Set<BlockType>,
+  nodes: ContractGraphNode[] = []
+): Array<{ name: string; rustType: string }> {
   const params: Array<{ name: string; rustType: string }> = [{ name: "env", rustType: "Env" }]
 
   if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {

@@ -8,8 +8,7 @@ Every contract in LumensBlock is a graph of **blocks** connected by edges. Execu
 
 A graph can instead declare **named functions**: tag a subgraph with a `FunctionEntry` block and the compiler emits a separate `pub fn` for it, so one contract can expose `deposit()`, `withdraw()` and `get_balance()` from a single deployment. Graphs with no `FunctionEntry` keep compiling to the single `execute()` entry point exactly as before.
 
-There are **8 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
-There are **7 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
+There are **9 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
 
 ---
 
@@ -170,6 +169,49 @@ env.events().publish((event_name,), (from.clone(), to.clone(), amount));
 
 ---
 
+## Cross-Contract Call
+
+Invokes a function on another already-deployed Soroban contract and, optionally, binds the
+result to a name that downstream blocks can read.
+
+**Config fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `targetContractId` | yes | Address of the deployed contract to call. Compilation fails with `MISSING_TARGET_CONTRACT` when empty. |
+| `targetFunction` | yes | Name of the function to invoke. Compilation fails with `MISSING_TARGET_FUNCTION` when empty. |
+| `targetArgs` | no | Ordered argument list. Each argument has a `name`, a `rustType` (`Address`, `i128`, `Symbol` or `bool`) and a value `source`: `literal`, `storageKey` (read from instance storage) or `invocationArg` (an `execute` parameter). |
+| `returnBinding` | no | Name the return value is bound to. When set, the name is selectable as an **Argument** operand in downstream Condition blocks. |
+| `returnType` | no | Rust type of the bound return value. Defaults to `i128`. |
+
+Pasting or uploading the target contract's JSON ABI in the config panel turns the function
+field into a selector and pre-fills the argument slots with the declared types. Arguments
+whose configured type diverges from the ABI are flagged inline.
+
+| Generated parameter | Rust type | Description |
+|---|---|---|
+| `target_contract` | `Address` | Address the call is made against (`target_contract_2`, `target_contract_3`, … for further Cross-Contract Call blocks) |
+| *argument names* | *as configured* | Every argument sourced from an `invocationArg` that no other block already declares |
+
+**Generated Soroban code** (target `stake`, arguments `caller`/`amount`, bound to `stake_result`):
+```rust
+#[soroban_sdk::contractclient(name = "CrossContract1Client")]
+pub trait CrossContract1 {
+    // Target contract: CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ
+    fn stake(env: Env, caller: Address, amount: i128) -> i128;
+}
+```
+```rust
+// Stake Pool → stake()
+let stake_result: i128 = CrossContract1Client::new(&env, &target_contract).stake(&caller, &amount);
+```
+
+**Example use case:** Stake a user's deposit into an external pool contract and abort the
+transaction unless the pool reports a non-zero staked amount.
+
+```
+Start → Auth → Cross-Contract Call → Condition → Event
+```
 ## Function Entry
 
 Marks the root of a named function subgraph. A graph containing one or more `FunctionEntry` blocks compiles to one `pub fn` per entry, all inside the same `#[contractimpl] impl` block, instead of a single `execute()`.
@@ -229,49 +271,6 @@ Terminates a function subgraph and declares what the function returns. Every `Fu
 **Generated Soroban code:** the return type joins the signature and the value becomes the function's trailing expression.
 
 **Example use case:** Ending a `get_balance` subgraph with `returnType: i128` so callers receive the stored balance.
-## Cross-Contract Call
-
-Invokes a function on another already-deployed Soroban contract and, optionally, binds the
-result to a name that downstream blocks can read.
-
-**Config fields:**
-
-| Field | Required | Description |
-|---|---|---|
-| `targetContractId` | yes | Address of the deployed contract to call. Compilation fails with `MISSING_TARGET_CONTRACT` when empty. |
-| `targetFunction` | yes | Name of the function to invoke. Compilation fails with `MISSING_TARGET_FUNCTION` when empty. |
-| `targetArgs` | no | Ordered argument list. Each argument has a `name`, a `rustType` (`Address`, `i128`, `Symbol` or `bool`) and a value `source`: `literal`, `storageKey` (read from instance storage) or `invocationArg` (an `execute` parameter). |
-| `returnBinding` | no | Name the return value is bound to. When set, the name is selectable as an **Argument** operand in downstream Condition blocks. |
-| `returnType` | no | Rust type of the bound return value. Defaults to `i128`. |
-
-Pasting or uploading the target contract's JSON ABI in the config panel turns the function
-field into a selector and pre-fills the argument slots with the declared types. Arguments
-whose configured type diverges from the ABI are flagged inline.
-
-| Generated parameter | Rust type | Description |
-|---|---|---|
-| `target_contract` | `Address` | Address the call is made against (`target_contract_2`, `target_contract_3`, … for further Cross-Contract Call blocks) |
-| *argument names* | *as configured* | Every argument sourced from an `invocationArg` that no other block already declares |
-
-**Generated Soroban code** (target `stake`, arguments `caller`/`amount`, bound to `stake_result`):
-```rust
-#[soroban_sdk::contractclient(name = "CrossContract1Client")]
-pub trait CrossContract1 {
-    // Target contract: CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ
-    fn stake(env: Env, caller: Address, amount: i128) -> i128;
-}
-```
-```rust
-// Stake Pool → stake()
-let stake_result: i128 = CrossContract1Client::new(&env, &target_contract).stake(&caller, &amount);
-```
-
-**Example use case:** Stake a user's deposit into an external pool contract and abort the
-transaction unless the pool reports a non-zero staked amount.
-
-```
-Start → Auth → Cross-Contract Call → Condition → Event
-```
 
 ---
 

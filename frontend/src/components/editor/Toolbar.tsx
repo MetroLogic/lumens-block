@@ -10,12 +10,14 @@ const BLOCK_TYPES = [
   "Storage",
   "Event",
   "Auth",
+  "CrossContractCall",
   "FunctionEntry",
   "FunctionReturn",
 ]
 
-/** Palette labels for block types whose identifier does not read well. */
+/** Display names for block types whose identifier is not readable as-is. */
 const BLOCK_LABELS: Record<string, string> = {
+  CrossContractCall: "Cross-Contract Call",
   FunctionEntry: "Function Entry",
   FunctionReturn: "Function Return",
 }

@@ -49,9 +49,9 @@ export const BLOCK_TYPES = [
   "Storage",
   "Event",
   "Auth",
+  "CrossContractCall",
   "FunctionEntry",
   "FunctionReturn",
-  "CrossContractCall",
 ] as const
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
@@ -73,34 +73,6 @@ export interface TransferAsset {
   name?: string
 }
 
-/**
- * A single declared parameter on a FunctionEntry block.
- * `rustType` is emitted verbatim into the generated signature after validation.
- */
-export interface FunctionParamConfig {
-  name: string
-  rustType: string
-}
-
-/** Visibility modifier a FunctionEntry block can emit. */
-export type FunctionVisibility = "pub" | "pub(crate)"
-
-export const FUNCTION_VISIBILITIES: FunctionVisibility[] = ["pub", "pub(crate)"]
-
-/** Maximum parameters a single FunctionEntry may declare. */
-export const MAX_FUNCTION_PARAMS = 10
-
-/** Rust identifiers accepted for function and parameter names. */
-export const RUST_IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/
-
-/**
- * Characters allowed in a user-supplied Rust type string.
- *
- * Deliberately an allowlist: it accepts the shapes a Soroban signature needs
- * (`i128`, `Vec<Address>`, `(u32, bool)`, `&Env`) while rejecting anything that
- * could close the signature and inject statements — `;`, `{`, `}` and friends.
- */
-export const RUST_TYPE_PATTERN = /^[A-Za-z0-9_<>,:&()[\] ]+$/
 /** Rust primitive types accepted for cross-contract call arguments and return values. */
 export const CROSS_CONTRACT_TYPES = ["Address", "i128", "Symbol", "bool"] as const
 
@@ -139,6 +111,35 @@ export function isCrossContractArgSource(value: unknown): value is CrossContract
   )
 }
 
+/**
+ * A single declared parameter on a FunctionEntry block.
+ * `rustType` is emitted verbatim into the generated signature after validation.
+ */
+export interface FunctionParamConfig {
+  name: string
+  rustType: string
+}
+
+/** Visibility modifier a FunctionEntry block can emit. */
+export type FunctionVisibility = "pub" | "pub(crate)"
+
+export const FUNCTION_VISIBILITIES: FunctionVisibility[] = ["pub", "pub(crate)"]
+
+/** Maximum parameters a single FunctionEntry may declare. */
+export const MAX_FUNCTION_PARAMS = 10
+
+/** Rust identifiers accepted for function and parameter names. */
+export const RUST_IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/
+
+/**
+ * Characters allowed in a user-supplied Rust type string.
+ *
+ * Deliberately an allowlist: it accepts the shapes a Soroban signature needs
+ * (`i128`, `Vec<Address>`, `(u32, bool)`, `&Env`) while rejecting anything that
+ * could close the signature and inject statements — `;`, `{`, `}` and friends.
+ */
+export const RUST_TYPE_PATTERN = /^[A-Za-z0-9_<>,:&()[\] ]+$/
+
 export interface BlockParameters {
   /** Token contract address for Transfer blocks (synced from `asset.contractId` when set) */
   token?: string
@@ -155,21 +156,6 @@ export interface BlockParameters {
    * Takes precedence over the legacy `condition` string during codegen.
    */
   conditionExpression?: ConditionExpression
-  /** Emitted function name for FunctionEntry blocks (a valid Rust identifier). */
-  functionName?: string
-  /** Visibility modifier for FunctionEntry blocks. Defaults to `pub`. */
-  visibility?: FunctionVisibility
-  /** Declared parameters for FunctionEntry blocks, in signature order after `env`. */
-  functionParams?: FunctionParamConfig[]
-  /** Rust return type for FunctionReturn blocks. Defaults to `()`. */
-  returnType?: string
-  /**
-   * Expression returned by a FunctionReturn block.
-   *
-   * Optional: when omitted, codegen emits a zero value for the declared
-   * `returnType` so the generated crate still compiles.
-   */
-  returnValue?: string
   /** Deployed contract address invoked by a CrossContractCall block. */
   targetContractId?: string
   /** Function name invoked on the target contract. */
@@ -181,8 +167,27 @@ export interface BlockParameters {
    * When set, downstream Condition blocks can reference it as an `invocationArg` operand.
    */
   returnBinding?: string
-  /** Rust type of the return value bound by `returnBinding`. Defaults to "i128". */
+  /**
+   * Rust return type.
+   *
+   * On a CrossContractCall block this types the value bound by `returnBinding`
+   * and defaults to `"i128"`. On a FunctionReturn block it is the enclosing
+   * function's return type and defaults to `"()"`.
+   */
   returnType?: string
+  /** Emitted function name for FunctionEntry blocks (a valid Rust identifier). */
+  functionName?: string
+  /** Visibility modifier for FunctionEntry blocks. Defaults to `pub`. */
+  visibility?: FunctionVisibility
+  /** Declared parameters for FunctionEntry blocks, in signature order after `env`. */
+  functionParams?: FunctionParamConfig[]
+  /**
+   * Expression returned by a FunctionReturn block.
+   *
+   * Optional: when omitted, codegen emits a zero value for the declared
+   * `returnType` so the generated crate still compiles.
+   */
+  returnValue?: string
 }
 
 export interface ContractGraphNode {

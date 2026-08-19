@@ -4,15 +4,14 @@ import React, { useEffect, useMemo } from "react"
 import { Handle, Position, useNodes, useReactFlow } from "reactflow"
 import ConditionExpressionBuilder from "./ConditionExpressionBuilder"
 import AssetSelector from "./AssetSelector"
+import CrossContractCallConfig from "./CrossContractCallConfig"
 import type {
-  ConditionExpression,
+  BlockParameters,
   FunctionParamConfig,
   FunctionVisibility,
   TransferAsset,
 } from "@/lib/compile/schema"
 import { FUNCTION_VISIBILITIES, MAX_FUNCTION_PARAMS } from "@/lib/compile/schema"
-import CrossContractCallConfig from "./CrossContractCallConfig"
-import type { BlockParameters, TransferAsset } from "@/lib/compile/schema"
 import { sanitizeRustIdent } from "@/lib/compile/crossContract"
 import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
@@ -22,19 +21,6 @@ import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
 interface NodeData {
   label: string
-  params?: {
-    condition?: string
-    conditionExpression?: ConditionExpression
-    storageKey?: string
-    token?: string
-    asset?: TransferAsset
-    eventName?: string
-    functionName?: string
-    visibility?: FunctionVisibility
-    functionParams?: FunctionParamConfig[]
-    returnType?: string
-    returnValue?: string
-  }
   params?: BlockParameters
 }
 
@@ -114,6 +100,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
         "bg-purple-50 border-purple-300 text-purple-900 shadow-purple-100 dark:bg-purple-950/40 dark:border-purple-700/60 dark:text-purple-200 dark:shadow-none"
       badgeColor = "bg-purple-200/60 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
       break
+    case "CrossContractCall":
     case "FunctionEntry":
       colorClasses =
         "bg-indigo-50 border-indigo-300 text-indigo-900 shadow-indigo-100 dark:bg-indigo-950/40 dark:border-indigo-700/60 dark:text-indigo-200 dark:shadow-none"
@@ -174,7 +161,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
     setFunctionParams(functionParams.filter((_, i) => i !== index))
   }
 
-  const handleExpressionChange = (expr: ConditionExpression) => {
+  const handleExpressionChange = (expr: NonNullable<BlockParameters["conditionExpression"]>) => {
     updateParams({ conditionExpression: expr })
   }
 
@@ -281,6 +268,25 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           <AssetSelector
             value={data.params?.asset ?? getNativeXlmAsset()}
             onChange={handleAssetChange}
+          />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Cross-contract call config panel — only visible when selected       */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "CrossContractCall" && selected && (
+        <div
+          className={`border-t-2 rounded-b-xl px-3 py-3 ${panelBorder}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+            Cross-Contract Call
+          </p>
+          <CrossContractCallConfig
+            value={data.params ?? {}}
+            onChange={(patch) => updateParams(patch)}
           />
         </div>
       )}

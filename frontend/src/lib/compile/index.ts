@@ -1,8 +1,8 @@
 export {
   BLOCK_TYPES,
-  FUNCTION_VISIBILITIES,
   CROSS_CONTRACT_ARG_SOURCES,
   CROSS_CONTRACT_TYPES,
+  FUNCTION_VISIBILITIES,
   MAX_EDGES,
   MAX_FUNCTION_PARAMS,
   MAX_GRAPH_BYTES,
@@ -14,11 +14,11 @@ export {
 export type {
   BlockParameters,
   BlockType,
-  FunctionParamConfig,
-  FunctionVisibility,
   CrossContractArg,
   CrossContractArgSource,
   CrossContractType,
+  FunctionParamConfig,
+  FunctionVisibility,
   CompileError,
   CompileResult,
   CompileSuccess,

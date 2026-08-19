@@ -1,16 +1,17 @@
 import { BlockType, ContractGraph, ContractGraphNode, ConditionExpression, Operand } from "./schema"
 import {
-  EXECUTABLE_TYPES,
-  collectFunctionGroups,
-  hasFunctionEntries,
-  type FunctionGroup,
-} from "./functions"
   collectCrossContractImports,
   crossContractParams,
   emitCrossContractCall,
   emitCrossContractClients,
   getCrossContractNodes,
 } from "./crossContract"
+import {
+  EXECUTABLE_TYPES,
+  collectFunctionGroups,
+  hasFunctionEntries,
+  type FunctionGroup,
+} from "./functions"
 import { validateGraphStructure } from "./validate"
 
 export interface CodegenResult {
@@ -32,15 +33,6 @@ pub enum GeneratedError {
     /// A Condition block guard evaluated to false.
     ConditionFailed = 1,
 }`
-
-const EXECUTABLE_TYPES = new Set<BlockType>([
-  "Auth",
-  "Transfer",
-  "Storage",
-  "Event",
-  "Condition",
-  "CrossContractCall",
-])
 
 /**
  * Returns executable nodes in breadth-first execution order.
@@ -379,10 +371,12 @@ function generateMultiFunctionSource(graph: ContractGraph): CodegenResult {
     for (const node of group.body) allBlockTypes.add(node.type)
   }
 
+  const allBodyNodes = groups.flatMap((group) => group.body)
+
   const needsSymbolShort = groups.some(
     (g) => g.returnValue !== null && g.returnValue.includes("symbol_short!")
   )
-  const imports = deriveImports(allBlockTypes)
+  const imports = deriveImports(allBlockTypes, allBodyNodes)
   if (needsSymbolShort && !imports.includes("symbol_short")) {
     imports.push("Symbol", "symbol_short")
     imports.sort()
@@ -390,9 +384,16 @@ function generateMultiFunctionSource(graph: ContractGraph): CodegenResult {
 
   const functions = groups.map((group) => emitFunction(group)).join("\n\n")
 
+  // Client traits and the error enum are module-level, so they are emitted once
+  // for every cross-contract call and Condition block across all functions.
+  const clients = emitCrossContractClients(allBodyNodes)
+  const declarations = [allBlockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
+    .filter(Boolean)
+    .join("\n\n")
+
   const source = `#![no_std]
 use soroban_sdk::{${imports.join(", ")}};
-
+${declarations ? `\n${declarations}\n` : ""}
 #[contract]
 pub struct LumensBlockGenerated;
 
@@ -420,7 +421,15 @@ function emitFunction(group: FunctionGroup): string {
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
   const returnClause = group.returnType === "()" ? "" : ` -> ${group.returnType}`
 
-  const statements = group.body.map(emitBlock).filter(Boolean)
+  // Cross-contract call slots are numbered per function: each function declares
+  // its own `target_contract`, `target_contract_2`, … parameters.
+  const crossCallIndexes = new Map(
+    getCrossContractNodes(group.body).map((node, index) => [node.id, index])
+  )
+
+  const statements = group.body
+    .map((node) => emitBlock(node, crossCallIndexes))
+    .filter(Boolean)
   if (group.returnValue !== null) {
     statements.push(`        ${group.returnValue}`)
   }
