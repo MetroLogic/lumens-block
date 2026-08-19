@@ -194,20 +194,25 @@ export function compileGraph(graph: ContractGraph, options?: CompileGraphOptions
 
   const getters = emitStorageGetters(executionOrder)
 
-  return `#![no_std]
-use soroban_sdk::{${imports.join(", ")}};
-${declarations ? `\n${declarations}\n` : ""}
-#[contract]
-pub struct LumensBlockContract;
-
-#[contractimpl]
-impl LumensBlockContract {
-    /// Generated contract entry-point signature.
-    pub fn execute(${paramList}) {
-${body.length > 0 ? body : "        // No executable nodes"}
-    }
-${getters ? `\n${getters}\n` : ""}}
-`
+  const getterBlock = getters ? `\n${getters}\n` : ""
+  const lines = [
+    "#![no_std]",
+    `use soroban_sdk:{${imports.join(", ")}};`,
+    declarations ? `\n${declarations}\n` : "",
+    "#[contract]",
+    "pub struct LumensBlockContract;",
+    "",
+    "#[contractimpl]",
+    "impl LumensBlockContract {",
+    "    /// Generated contract entry-point signature.",
+    `    pub fn execute(${paramList}) {`,
+    body.length > 0 ? body : "        // No executable nodes",
+    "    }",
+    getterBlock,
+    "}",
+    "",
+  ]
+  return lines.join("\n")
 }
 
 function defaultForReturnType(returnType: string): string {
