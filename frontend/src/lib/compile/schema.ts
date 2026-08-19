@@ -56,6 +56,12 @@ export const BLOCK_TYPES = [
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
 
+/** Storage mode for Storage blocks. */
+export type StorageMode = "read" | "write"
+
+/** Storage scope for Storage blocks. */
+export type StorageScope = "instance" | "persistent" | "temporary"
+
 /** Asset kind selectable on Transfer blocks. */
 export type AssetKind = "xlm" | "sac"
 
@@ -147,6 +153,12 @@ export interface BlockParameters {
   asset?: TransferAsset
   /** Storage key for Storage blocks */
   storageKey?: string
+  /** Storage mode: "write" (default) emits a set call; "read" emits a standalone getter function */
+  storageMode?: StorageMode
+  /** Storage scope: which Soroban storage tier to use (default: "instance") */
+  storageScope?: StorageScope
+  /** Return type for read-mode Storage blocks (default: "i128") */
+  storageReturnType?: "i128" | "bool" | "Symbol" | "Address"
   /** Event name for Event blocks */
   eventName?: string
   /** Condition expression label for Condition blocks (legacy free-text, kept for backward compat) */

@@ -1,4 +1,4 @@
-import { BlockType, ContractGraph, ContractGraphNode, ConditionExpression, Operand } from "./schema"
+import { BlockType, ContractGraph, ContractGraphNode, ConditionExpression, Operand, StorageScope } from "./schema"
 import {
   collectCrossContractImports,
   crossContractParams,
@@ -164,8 +164,13 @@ function deriveParams(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = [
   }
 
   if (blockTypes.has("Storage")) {
-    params.push({ name: "key", rustType: "Symbol" })
-    params.push({ name: "value", rustType: "i128" })
+    const hasWriteStorage = nodes.some(
+      (n) => n.type === "Storage" && (n.data.params?.storageMode ?? "write") === "write"
+    )
+    if (hasWriteStorage) {
+      params.push({ name: "key", rustType: "Symbol" })
+      params.push({ name: "value", rustType: "i128" })
+    }
   }
 
   if (blockTypes.has("Condition")) {
@@ -228,7 +233,14 @@ function emitBlock(node: ContractGraphNode, crossCallIndexes: Map<string, number
 
     case "Storage": {
       const key = node.data.params?.storageKey ?? "stored"
-      return `        // ${label}\n        env.storage().instance().set(&symbol_short!("${sanitizeSymbol(key)}"), &value);`
+      const mode = node.data.params?.storageMode ?? "write"
+      const scope = node.data.params?.storageScope ?? "instance"
+      const sym = sanitizeSymbol(key)
+      if (mode === "read") {
+        // Read-mode nodes emit a standalone getter — nothing in the execute body
+        return ""
+      }
+      return `        // ${label}\n        env.storage().${scope}().set(&symbol_short!("${sym}"), &value);`
     }
 
     case "Event":
@@ -291,6 +303,55 @@ function buildRustCondition(expr: ConditionExpression): string {
   return `${left} ${expr.operator} ${right}`
 }
 
+/**
+ * Derives the unwrap_or default value string for a given return type.
+ */
+function defaultForReturnType(returnType: string): string {
+  switch (returnType) {
+    case "bool": return "false"
+    case "i128": return "0"
+    case "Symbol": return "Symbol::short(\"\".as_bytes())"
+    case "Address": return 'panic!("not found")'
+    default: return "0"
+  }
+}
+
+/**
+ * Emits standalone pub fn get_<key>(env: Env) -> <returnType> functions
+ * for each unique read-mode Storage node.
+ */
+function emitStorageGetters(nodes: ContractGraphNode[]): string {
+  const seen = new Set<string>()
+  const fns: string[] = []
+
+  for (const node of nodes) {
+    if (node.type !== "Storage") continue
+    const mode = node.data.params?.storageMode ?? "write"
+    if (mode !== "read") continue
+
+    const key = node.data.params?.storageKey ?? "stored"
+    const sym = sanitizeSymbol(key)
+    if (seen.has(sym)) continue
+    seen.add(sym)
+
+    const scope: StorageScope = node.data.params?.storageScope ?? "instance"
+    const returnType = node.data.params?.storageReturnType ?? "i128"
+    const fnName = `get_${sym}`
+    const defaultVal = defaultForReturnType(returnType)
+
+    fns.push(
+      `    /// Generated getter for storage key "${sym}".\n` +
+      `    pub fn ${fnName}(env: Env) -> ${returnType} {\n` +
+      `        env.storage().${scope}()\n` +
+      `            .get::<_, ${returnType}>(&symbol_short!("${sym}"))\n` +
+      `            .unwrap_or(${defaultVal})\n` +
+      `    }`
+    )
+  }
+
+  return fns.join("\n\n")
+}
+
 function fnv1aHash(input: string): string {
   let hash = 0x811c9dc5
   for (let i = 0; i < input.length; i++) {
@@ -333,6 +394,8 @@ export function generateContractSource(graph: ContractGraph): CodegenResult {
     .filter(Boolean)
     .join("\n\n")
 
+  const getters = emitStorageGetters(executionOrder)
+
   const source = `#![no_std]
 use soroban_sdk::{${imports.join(", ")}};
 ${declarations ? `\n${declarations}\n` : ""}
@@ -345,7 +408,7 @@ impl LumensBlockGenerated {
     pub fn execute(${paramList}) {
 ${body}
     }
-}
+${getters ? `\n${getters}\n` : ""}}
 `
 
   return {

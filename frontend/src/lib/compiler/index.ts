@@ -4,6 +4,7 @@ import {
   ContractGraph,
   ContractGraphNode,
   Operand,
+  StorageScope,
 } from "../compile/schema"
 import { GENERATED_ERROR_ENUM } from "../compile/codegen"
 import {
@@ -191,20 +192,66 @@ export function compileGraph(graph: ContractGraph, options?: CompileGraphOptions
     .filter(Boolean)
     .join("\n\n")
 
-  return `#![no_std]
-use soroban_sdk::{${imports.join(", ")}};
-${declarations ? `\n${declarations}\n` : ""}
-#[contract]
-pub struct LumensBlockContract;
+  const getters = emitStorageGetters(executionOrder)
 
-#[contractimpl]
-impl LumensBlockContract {
-    /// Generated contract entry-point signature.
-    pub fn execute(${paramList}) {
-${body.length > 0 ? body : "        // No executable nodes"}
-    }
+  const getterBlock = getters ? `\n${getters}\n` : ""
+  const lines = [
+    "#![no_std]",
+    `use soroban_sdk:{${imports.join(", ")}};`,
+    declarations ? `\n${declarations}\n` : "",
+    "#[contract]",
+    "pub struct LumensBlockContract;",
+    "",
+    "#[contractimpl]",
+    "impl LumensBlockContract {",
+    "    /// Generated contract entry-point signature.",
+    `    pub fn execute(${paramList}) {`,
+    body.length > 0 ? body : "        // No executable nodes",
+    "    }",
+    getterBlock,
+    "}",
+    "",
+  ]
+  return lines.join("\n")
 }
-`
+
+function defaultForReturnType(returnType: string): string {
+  switch (returnType) {
+    case "bool": return "false"
+    case "i128": return "0"
+    default: return "0"
+  }
+}
+
+function emitStorageGetters(nodes: ContractGraphNode[]): string {
+  const seen = new Set<string>()
+  const fns: string[] = []
+
+  for (const node of nodes) {
+    if (node.type !== "Storage") continue
+    const mode = node.data.params?.storageMode ?? "write"
+    if (mode !== "read") continue
+
+    const key = node.data.params?.storageKey ?? "stored"
+    const sym = sanitizeSymbol(key)
+    if (seen.has(sym)) continue
+    seen.add(sym)
+
+    const scope: StorageScope = node.data.params?.storageScope ?? "instance"
+    const returnType = node.data.params?.storageReturnType ?? "i128"
+    const defaultVal = defaultForReturnType(returnType)
+
+    fns.push(
+      `    /// Generated getter for storage key "${sym}".\n` +
+      `    pub fn get_${sym}(env: Env) -> ${returnType} {\n` +
+      `        env.storage().${scope}()\n` +
+      `            .get::<_, ${returnType}>(&symbol_short!("${sym}"))\n` +
+      `            .unwrap_or(${defaultVal})\n` +
+      `    }`
+    )
+  }
+
+  return fns.join("\n\n")
 }
 
 /**
@@ -337,8 +384,13 @@ function deriveParams(
   }
 
   if (blockTypes.has("Storage")) {
-    params.push({ name: "key", rustType: "Symbol" })
-    params.push({ name: "value", rustType: "i128" })
+    const hasWriteStorage = nodes.some(
+      (n) => n.type === "Storage" && (n.data.params?.storageMode ?? "write") === "write"
+    )
+    if (hasWriteStorage) {
+      params.push({ name: "key", rustType: "Symbol" })
+      params.push({ name: "value", rustType: "i128" })
+    }
   }
 
   if (blockTypes.has("Condition")) {
@@ -405,8 +457,11 @@ function emitNodeCode(node: ContractGraphNode, crossCallIndexes: Map<string, num
 
     case "Storage": {
       const key = node.data.params?.storageKey ?? "key"
+      const mode = node.data.params?.storageMode ?? "write"
+      const scope: StorageScope = node.data.params?.storageScope ?? "instance"
       const sym = sanitizeSymbol(key)
-      return `        // Storage: ${label}\n        env.storage().instance().set(&symbol_short!("${sym}"), &value);`
+      if (mode === "read") return ""
+      return `        // Storage: ${label}\n        env.storage().${scope}().set(&symbol_short!("${sym}"), &value);`
     }
 
     case "Event":

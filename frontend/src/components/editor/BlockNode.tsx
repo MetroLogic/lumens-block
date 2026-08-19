@@ -186,6 +186,10 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
     type === "CrossContractCall" && data.params?.targetFunction
       ? `${data.params.targetFunction}()`
       : null
+  const storageBadge =
+    type === "Storage"
+      ? (data.params?.storageMode ?? "write") === "read" ? "Read" : "Write"
+      : null
 
   // -------------------------------------------------------------------------
   // Render
@@ -218,6 +222,14 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
             title={data.params?.asset?.contractId}
           >
             {transferBadge}
+          </span>
+        )}
+        {storageBadge && (
+          <span
+            className={`mt-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${badgeColor}`}
+            title={`Storage mode: ${storageBadge}`}
+          >
+            {storageBadge}
           </span>
         )}
         {crossContractBadge && (
@@ -269,6 +281,81 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
             value={data.params?.asset ?? getNativeXlmAsset()}
             onChange={handleAssetChange}
           />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Storage config panel — only visible when node is selected           */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "Storage" && selected && (
+        <div
+          data-testid="config-panel"
+          className={`border-t-2 rounded-b-xl px-3 py-3 min-w-[220px] border-amber-200 bg-amber-50/80 dark:border-amber-800 dark:bg-amber-950/50`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            Storage Config
+          </p>
+          {/* Mode toggle */}
+          <div className="mb-2">
+            <label className="block text-[10px] font-medium text-amber-800 dark:text-amber-200 mb-1">Mode</label>
+            <div className="flex rounded overflow-hidden border border-amber-300 dark:border-amber-700 text-[11px] font-semibold">
+              {(["write", "read"] as const).map((m) => (
+                <button
+                  key={m}
+                  className={`flex-1 py-1 transition-colors ${
+                    (data.params?.storageMode ?? "write") === m
+                      ? "bg-amber-400 text-white dark:bg-amber-600"
+                      : "bg-white text-amber-700 dark:bg-amber-950 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
+                  }`}
+                  onClick={() => updateParams({ storageMode: m })}
+                >
+                  {m.charAt(0).toUpperCase() + m.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Scope selector */}
+          <div className="mb-2">
+            <label className="block text-[10px] font-medium text-amber-800 dark:text-amber-200 mb-1">Scope</label>
+            <select
+              value={data.params?.storageScope ?? "instance"}
+              onChange={(e) => updateParams({ storageScope: e.target.value as "instance" | "persistent" | "temporary" })}
+              className="w-full rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950 text-amber-800 dark:text-amber-200 text-xs px-2 py-1"
+            >
+              <option value="instance">Instance</option>
+              <option value="persistent">Persistent</option>
+              <option value="temporary">Temporary</option>
+            </select>
+          </div>
+          {/* Storage key */}
+          <div className="mb-2">
+            <label className="block text-[10px] font-medium text-amber-800 dark:text-amber-200 mb-1">Key</label>
+            <input
+              type="text"
+              value={data.params?.storageKey ?? ""}
+              onChange={(e) => updateParams({ storageKey: e.target.value })}
+              placeholder="e.g. balance"
+              className="w-full rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950 text-amber-800 dark:text-amber-200 text-xs px-2 py-1"
+            />
+          </div>
+          {/* Return type — only shown in read mode */}
+          {(data.params?.storageMode ?? "write") === "read" && (
+            <div>
+              <label className="block text-[10px] font-medium text-amber-800 dark:text-amber-200 mb-1">Return Type</label>
+              <select
+                value={data.params?.storageReturnType ?? "i128"}
+                onChange={(e) => updateParams({ storageReturnType: e.target.value as "i128" | "bool" | "Symbol" | "Address" })}
+                className="w-full rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-amber-950 text-amber-800 dark:text-amber-200 text-xs px-2 py-1"
+              >
+                <option value="i128">i128</option>
+                <option value="bool">bool</option>
+                <option value="Symbol">Symbol</option>
+                <option value="Address">Address</option>
+              </select>
+            </div>
+          )}
         </div>
       )}
 
