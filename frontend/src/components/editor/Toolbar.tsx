@@ -4,11 +4,22 @@ import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
-const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth", "CrossContractCall"]
+const BLOCK_TYPES = [
+  "Condition",
+  "Transfer",
+  "Storage",
+  "Event",
+  "Auth",
+  "CrossContractCall",
+  "FunctionEntry",
+  "FunctionReturn",
+]
 
 /** Display names for block types whose identifier is not readable as-is. */
 const BLOCK_LABELS: Record<string, string> = {
   CrossContractCall: "Cross-Contract Call",
+  FunctionEntry: "Function Entry",
+  FunctionReturn: "Function Return",
 }
 
 interface Props {
