@@ -17,6 +17,7 @@ import {
   type Operand,
 } from "./schema"
 import { collectFunctionGroups, hasFunctionEntries } from "./functions"
+import { inferGraphTypes } from "./typeInference"
 
 function invalid(code: string, message: string, details?: string[]): CompileError {
   return { code, message, details }
@@ -504,6 +505,19 @@ export function validateGraphStructure(graph: ContractGraph): CompileError | nul
         )
       }
     }
+  }
+
+  // Editor-time type checking: mismatched Condition operands and Storage
+  // data edges compile fine structurally but fail `cargo build`. Surface
+  // every mismatch found (rather than just the first) as `details` on one
+  // CompileError, keyed by edgeId so the editor can highlight each offender.
+  const typeResult = inferGraphTypes(graph)
+  if (typeResult.errors.length > 0) {
+    return invalid(
+      "TYPE_MISMATCH",
+      `Graph has ${typeResult.errors.length} type error${typeResult.errors.length === 1 ? "" : "s"}.`,
+      typeResult.errors.map((e) => e.message)
+    )
   }
 
   return null
