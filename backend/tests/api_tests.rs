@@ -765,32 +765,12 @@ pub fn hello(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 "#;
 
     let response = app
-#[tokio::test]
-async fn test_compile_cache() {
-    let app = create_app();
-
-    let valid_source = r#"#![no_std]
-use soroban_sdk::{contract, contractimpl, Env};
-
-#[contract]
-pub struct CacheTestContract;
-
-#[contractimpl]
-impl CacheTestContract {
-    pub fn dummy(_env: Env) -> u32 {
-        99
-    }
-}
-"#;
-
-    // First compilation
-    let response1 = app.clone()
         .oneshot(
             Request::builder()
                 .uri("/compile")
                 .method("POST")
                 .header("Content-Type", "application/json")
-                .body(Body::from(json!({ "source": valid_source }).to_string()))
+                .body(Body::from(json!({ "source": malicious_source }).to_string()))
                 .unwrap(),
         )
         .await

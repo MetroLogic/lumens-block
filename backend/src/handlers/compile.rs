@@ -20,7 +20,7 @@ use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
 
 use crate::worker_pool::{
-    CompileJob, CompileJobResult, CompileProgress, WorkerPool, compute_source_hash,
+    CompileJob, CompileJobResult, CompileProgress, compute_source_hash,
 };
 
 // ─── Shared request / response types ─────────────────────────────────────────
