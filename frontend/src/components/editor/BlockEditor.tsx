@@ -8,10 +8,13 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
   type Connection,
+  type Edge,
+  type EdgeMouseHandler,
   type ReactFlowInstance,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { inferGraphTypes, type TypeMismatchError } from "@/lib/compile/typeInference"
 import { applyAutoLayout } from "@/lib/layout"
 import {
   EMPTY_GRAPH_NODES,
@@ -68,6 +71,8 @@ export default function BlockEditor() {
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
   const [deployedContractId, setDeployedContractId] = useState<string | null>(null)
+  const [typeErrors, setTypeErrors] = useState<TypeMismatchError[]>([])
+  const [hoveredErrorEdge, setHoveredErrorEdge] = useState<{ id: string; x: number; y: number } | null>(null)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -275,6 +280,51 @@ export default function BlockEditor() {
     return () => window.clearTimeout(timer)
   }, [nodes, edges, hydrated])
 
+  // Debounced editor-time type checking — re-evaluated on every graph change
+  // so mismatched edges light up red without waiting for a Compile click.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const { errors } = inferGraphTypes(toContractGraph(nodes, edges))
+      setTypeErrors(errors)
+    }, GRAPH_AUTOSAVE_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [nodes, edges])
+
+  // Maps edgeId → the first mismatch message for that edge, for red styling
+  // and the hover tooltip below.
+  const typeErrorsByEdge = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const error of typeErrors) {
+      if (!map.has(error.edgeId)) map.set(error.edgeId, error.message)
+    }
+    return map
+  }, [typeErrors])
+
+  const styledEdges = useMemo<Edge[]>(
+    () =>
+      edges.map((edge) =>
+        typeErrorsByEdge.has(edge.id)
+          ? {
+              ...edge,
+              className: [edge.className, "type-mismatch-edge"].filter(Boolean).join(" "),
+              style: { ...edge.style, stroke: "#ef4444", strokeWidth: 2.5 },
+            }
+          : edge
+      ),
+    [edges, typeErrorsByEdge]
+  )
+
+  const onEdgeMouseEnter: EdgeMouseHandler = useCallback(
+    (event, edge) => {
+      if (!typeErrorsByEdge.has(edge.id)) return
+      setHoveredErrorEdge({ id: edge.id, x: event.clientX, y: event.clientY })
+    },
+    [typeErrorsByEdge]
+  )
+
+  const onEdgeMouseLeave: EdgeMouseHandler = useCallback(() => setHoveredErrorEdge(null), [])
+
   // Auto-dismiss toast
   useEffect(() => {
     if (!toast) return
@@ -324,11 +374,13 @@ export default function BlockEditor() {
       <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
           nodes={nodes}
-          edges={edges}
+          edges={styledEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onInit={setReactFlowInstance}
+          onEdgeMouseEnter={onEdgeMouseEnter}
+          onEdgeMouseLeave={onEdgeMouseLeave}
           nodeTypes={nodeTypes}
           fitView
         >
@@ -336,6 +388,17 @@ export default function BlockEditor() {
           <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-200" />
           <MiniMap className="dark:bg-slate-800 dark:border-slate-700" maskColor={theme === "dark" ? "rgba(15, 23, 42, 0.7)" : "rgba(240, 242, 245, 0.7)"} />
         </ReactFlow>
+
+        {hoveredErrorEdge && (
+          <div
+            data-testid="edge-type-error-tooltip"
+            role="tooltip"
+            className="pointer-events-none fixed z-30 max-w-xs rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-red-800 shadow-lg dark:border-red-800 dark:bg-red-950/90 dark:text-red-200"
+            style={{ left: hoveredErrorEdge.x + 12, top: hoveredErrorEdge.y + 12 }}
+          >
+            {typeErrorsByEdge.get(hoveredErrorEdge.id)}
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
@@ -352,22 +415,41 @@ export default function BlockEditor() {
             </label>
           </div>
         )}
+        {typeErrors.length > 0 && (
+          <div
+            data-testid="type-error-banner"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+          >
+            <p className="font-semibold">
+              {typeErrors.length} type error{typeErrors.length === 1 ? "" : "s"} — fix before compiling
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsCodePreviewOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
-            title="Preview generated Soroban contract code"
+            disabled={typeErrors.length > 0}
+            className="relative flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+            title={typeErrors.length > 0 ? "Resolve type errors before compiling" : "Preview generated Soroban contract code"}
           >
             <span className="font-mono font-bold text-blue-600 dark:text-blue-400">&lt;/&gt;</span> Code Preview
+            {typeErrors.length > 0 && (
+              <span
+                data-testid="type-error-badge"
+                className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white"
+              >
+                {typeErrors.length}
+              </span>
+            )}
           </button>
-          <SimulateButton nodes={nodes} edges={edges} />
+          <SimulateButton nodes={nodes} edges={edges} disabled={typeErrors.length > 0} />
           <DeployButton
             nodes={nodes}
             edges={edges}
             selectedNetwork={selectedNetwork}
             walletAddress={walletAddress}
             walletBalance={walletBalance}
-            disabled={testsBlockingDeploy}
+            disabled={testsBlockingDeploy || typeErrors.length > 0}
             onDeploySuccess={(id) => setDeployedContractId(id)}
           />
         </div>
