@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Node, Edge } from "reactflow"
 import { CompileContractError, deployContract, estimateDeploymentFee, type StellarNetwork } from "@/lib/stellar/deploy"
+import { X } from "lucide-react"
 
 interface Props {
   nodes: Node[]
@@ -11,6 +12,51 @@ interface Props {
   selectedNetwork: StellarNetwork
   walletAddress: string | null
   walletBalance: string
+}
+
+function mapErrorToFriendlyMessage(err: unknown): string {
+  if (err instanceof CompileContractError) {
+    return err.message
+  }
+
+  const message = err instanceof Error ? err.message : String(err)
+  const lower = message.toLowerCase()
+
+  // Freighter wallet rejection
+  if (
+    lower.includes("freighter") &&
+    (lower.includes("reject") || lower.includes("denied") || lower.includes("cancel"))
+  ) {
+    return "Transaction was rejected in Freighter. Please approve the signing request to deploy."
+  }
+
+  // Freighter not installed
+  if (lower.includes("freighter") && (lower.includes("not found") || lower.includes("not installed") || lower.includes("install"))) {
+    return "Freighter wallet extension not found. Please install it from https://freighter.app/"
+  }
+
+  // Freighter locked
+  if (lower.includes("freighter") && lower.includes("unlock")) {
+    return "Freighter wallet is locked. Please unlock it and try again."
+  }
+
+  // Insufficient balance
+  if (lower.includes("insufficient") || lower.includes("balance") || lower.includes("not enough") || lower.includes("shortfall")) {
+    return "Insufficient XLM balance. Fund your Testnet account at https://laboratory.stellar.org/"
+  }
+
+  // Network / timeout
+  if (lower.includes("timeout") || lower.includes("network") || lower.includes("fetch") || lower.includes("econnrefused") || lower.includes("enosys")) {
+    return "Network request timed out. Please check your internet connection and try again."
+  }
+
+  // RPC / transaction failure
+  if (lower.includes("rpc") || lower.includes("soroban") || lower.includes("simulation") || lower.includes("sequence")) {
+    return `Transaction failed: ${message}`
+  }
+
+  console.error("[DeployButton] Unhandled error:", err)
+  return "Deployment failed. Check the console for details."
 }
 
 export default function DeployButton({
@@ -23,6 +69,7 @@ export default function DeployButton({
 }: Props) {
   const [status, setStatus] = useState<"idle" | "deploying" | "success" | "error">("idle")
   const [message, setMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [estimatedFee, setEstimatedFee] = useState<string | null>(null)
   const [estimateError, setEstimateError] = useState<string | null>(null)
@@ -86,16 +133,14 @@ export default function DeployButton({
       })
       setStatus("success")
       setMessage(result)
+      setErrorMessage(null)
       setIsConfirmOpen(false)
     } catch (err) {
+      console.error("[DeployButton] Deployment failed:", err)
       setStatus("error")
-      if (err instanceof CompileContractError) {
-        setMessage(err.message)
-      } else if (err instanceof Error) {
-        setMessage(err.message)
-      } else {
-        setMessage("Deployment failed. Please try again.")
-      }
+      const friendly = mapErrorToFriendlyMessage(err)
+      setErrorMessage(friendly)
+      setMessage(friendly)
     }
   }
 
@@ -108,14 +153,29 @@ export default function DeployButton({
 
   return (
     <>
-      {message && (
+      {message && status === "error" && errorMessage && (
+        <div
+          role="alert"
+          className="relative flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 pr-8 text-xs shadow dark:border-red-800 dark:bg-red-950/40"
+        >
+          <span className="mt-0.5 text-red-800 dark:text-red-300">{errorMessage}</span>
+          <button
+            onClick={() => {
+              setMessage(null)
+              setErrorMessage(null)
+              setStatus("idle")
+            }}
+            className="absolute right-1.5 top-1.5 rounded p-0.5 text-red-500 hover:bg-red-100 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/50"
+            aria-label="Dismiss error"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+      {message && status === "success" && (
         <p
           role="status"
-          className={`rounded-lg px-3 py-2 text-xs shadow ${
-            status === "error"
-              ? "bg-red-50 text-red-800 border border-red-200"
-              : "bg-green-50 text-green-800 border border-green-200"
-          }`}
+          className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800 shadow dark:border-green-800 dark:bg-green-950/40 dark:text-green-300"
         >
           {message}
         </p>
