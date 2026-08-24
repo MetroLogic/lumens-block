@@ -10,6 +10,7 @@ const BLOCK_TYPES = [
   "Storage",
   "Event",
   "Auth",
+  "RBACCheck",
   "CrossContractCall",
   "FunctionEntry",
   "FunctionReturn",
@@ -17,6 +18,7 @@ const BLOCK_TYPES = [
 
 /** Display names for block types whose identifier is not readable as-is. */
 const BLOCK_LABELS: Record<string, string> = {
+  RBACCheck: "RBAC Check",
   CrossContractCall: "Cross-Contract Call",
   FunctionEntry: "Function Entry",
   FunctionReturn: "Function Return",

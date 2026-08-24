@@ -5,10 +5,13 @@ import { Handle, Position, useNodes, useReactFlow } from "reactflow"
 import ConditionExpressionBuilder from "./ConditionExpressionBuilder"
 import AssetSelector from "./AssetSelector"
 import CrossContractCallConfig from "./CrossContractCallConfig"
+import { Shield } from "lucide-react"
 import type {
   BlockParameters,
   FunctionParamConfig,
   FunctionVisibility,
+  RbacAction,
+  RbacRole,
   TransferAsset,
 } from "@/lib/compile/schema"
 import { FUNCTION_VISIBILITIES, MAX_FUNCTION_PARAMS } from "@/lib/compile/schema"
@@ -34,6 +37,7 @@ interface BlockNodeProps {
 /** Short badge text shown in a node's header. */
 const BADGE_LABELS: Record<string, string> = {
   default: "Start",
+  RBACCheck: "RBAC",
   FunctionEntry: "Function",
   FunctionReturn: "Return",
 }
@@ -99,6 +103,13 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
       colorClasses =
         "bg-purple-50 border-purple-300 text-purple-900 shadow-purple-100 dark:bg-purple-950/40 dark:border-purple-700/60 dark:text-purple-200 dark:shadow-none"
       badgeColor = "bg-purple-200/60 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200"
+      break
+    case "RBACCheck":
+      colorClasses =
+        "bg-red-50 border-red-500 text-red-900 shadow-red-100 dark:bg-red-950/40 dark:border-red-600 dark:text-red-200 dark:shadow-none"
+      badgeColor = "bg-red-200/80 text-red-800 dark:bg-red-900/80 dark:text-red-200"
+      panelBorder =
+        "border-red-200 bg-red-50/80 dark:border-red-800 dark:bg-red-950/50"
       break
     case "CrossContractCall":
     case "FunctionEntry":
@@ -210,11 +221,14 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
 
       {/* Node header */}
       <div className="flex flex-col items-center gap-1 px-4 py-3 text-center">
-        <span
-          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColor}`}
-        >
-          {BADGE_LABELS[type] ?? type}
-        </span>
+        <div className="flex items-center gap-1">
+          {type === "RBACCheck" && <Shield size={12} className="text-red-600 dark:text-red-400" />}
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeColor}`}
+          >
+            {BADGE_LABELS[type] ?? type}
+          </span>
+        </div>
         <div className="text-sm font-semibold mt-1">{data.label}</div>
         {transferBadge && (
           <span
@@ -241,6 +255,86 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           </span>
         )}
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* RBACCheck config panel — only visible when node is selected         */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "RBACCheck" && selected && (
+        <div
+          data-testid="config-panel"
+          className={`border-t-2 rounded-b-xl px-3 py-3 min-w-[220px] ${panelBorder}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+            RBAC Config
+          </p>
+
+          {/* Role selection */}
+          <div className="mb-2">
+            <label className="block text-[10px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Role
+            </label>
+            <select
+              data-testid="rbac-role-select"
+              value={data.params?.rbacRole ?? "admin"}
+              onChange={(e) => updateParams({ rbacRole: e.target.value as RbacRole })}
+              className={inputClasses}
+            >
+              <option value="admin">admin</option>
+              <option value="minter">minter</option>
+              <option value="pauser">pauser</option>
+              <option value="custom">custom</option>
+            </select>
+          </div>
+
+          {/* Custom role input */}
+          {(data.params?.rbacRole ?? "admin") === "custom" && (
+            <div className="mb-2">
+              <label className="block text-[10px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Custom Role Name
+              </label>
+              <input
+                data-testid="rbac-custom-role-input"
+                type="text"
+                value={data.params?.rbacCustomRole ?? ""}
+                onChange={(e) => updateParams({ rbacCustomRole: e.target.value })}
+                placeholder="e.g. operator"
+                className={`${inputClasses} ${
+                  !(data.params?.rbacCustomRole ?? "").trim() ? "border-red-500 ring-1 ring-red-500" : ""
+                }`}
+              />
+              {!(data.params?.rbacCustomRole ?? "").trim() && (
+                <p className="mt-1 text-[10px] text-red-600 dark:text-red-400">
+                  Custom role name is required.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Action radio group */}
+          <div>
+            <label className="block text-[10px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Action
+            </label>
+            <div className="flex flex-col gap-1 text-xs text-slate-800 dark:text-slate-200">
+              {(["require", "grant", "revoke", "transfer_admin"] as const).map((act) => (
+                <label key={act} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`rbac-action-${id}`}
+                    value={act}
+                    checked={(data.params?.rbacAction ?? "require") === act}
+                    onChange={() => updateParams({ rbacAction: act })}
+                    className="text-red-600 focus:ring-red-500"
+                  />
+                  <span>{act}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Condition config panel — only visible when node is selected          */}
