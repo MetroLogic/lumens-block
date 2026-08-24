@@ -34,6 +34,15 @@ test("rbac block configuration and code preview contains require_auth", async ({
   const roleSelect = page.locator('[data-testid="rbac-role-select"]')
   await expect(roleSelect).toHaveValue("admin")
 
+  // Connect Start node to RBACCheck node so it is reachable and compiled
+  const startNode = page.locator('[data-testid="block-node-default"]')
+  const startHandle = startNode.locator(".react-flow__handle-bottom")
+  const rbacHandle = rbacNode.locator(".react-flow__handle-top")
+  await expect(startHandle).toBeVisible()
+  await expect(rbacHandle).toBeVisible()
+  await startHandle.dragTo(rbacHandle)
+  await page.waitForTimeout(300)
+
   // Click "Code Preview" button
   await page.getByRole("button", { name: "Code Preview" }).click()
   await page.waitForTimeout(300)
