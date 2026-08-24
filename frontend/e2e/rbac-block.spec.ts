@@ -34,16 +34,13 @@ test("rbac block configuration and code preview contains require_auth", async ({
   const roleSelect = page.locator('[data-testid="rbac-role-select"]')
   await expect(roleSelect).toHaveValue("admin")
 
-  // Click "Preview Code" button
-  const previewButton = page.getByRole("button", { name: /preview code/i })
-  await previewButton.click()
+  // Click "Code Preview" button
+  await page.getByRole("button", { name: "Code Preview" }).click()
   await page.waitForTimeout(300)
 
-  // Code preview modal should open
-  const codeModal = page.locator('[data-testid="code-preview-modal"]')
-  await expect(codeModal).toBeVisible()
-
-  // Code content should contain `require_auth`
-  const codeContent = await codeModal.textContent()
-  expect(codeContent).toContain("require_auth")
+  // Code preview pre element should contain `require_auth`
+  const preview = page.locator("pre")
+  await expect(preview).toBeVisible()
+  const code = await preview.innerText()
+  expect(code).toContain("require_auth")
 })
