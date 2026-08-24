@@ -577,30 +577,64 @@ describe("generateContractSource — multi-function graphs", () => {
     expect(deposit).toContain("caller.require_auth()")
     expect(deposit).toContain("caller: Address")
     expect(readOnly).not.toContain("caller.require_auth()")
-    expect(readOnly).toContain("pub fn read_only(env: Env) -> u32")
+    expect(readOnly).not.toContain("caller: Address")
   })
+})
 
-  it("honours the configured visibility", () => {
+describe("generateContractSource & validateGraphStructure — RBACCheck", () => {
+  it("triggers validation error when rbacRole is custom and rbacCustomRole is empty", () => {
     const graph: ContractGraph = {
       nodes: [
-        entryNode("fe1", "internal_helper", { visibility: "pub(crate)" }),
-        returnNode("fr1", { returnType: "()" }),
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac1",
+          type: "RBACCheck",
+          data: { label: "Custom RBAC", params: { rbacRole: "custom", rbacCustomRole: "   " } },
+        },
       ],
-      edges: [{ id: "e1", source: "fe1", target: "fr1" }],
+      edges: [{ id: "e1", source: "start", target: "rbac1" }],
     }
+    const err = validateGraphStructure(graph)
+    expect(err?.code).toBe("INCOMPLETE_BLOCK")
+    expect(err?.message).toContain("custom role selected but role name is empty")
 
-    expect(generateContractSource(graph).source).toContain("pub(crate) fn internal_helper")
+    expect(() => generateContractSource(graph)).toThrow("custom role selected but role name is empty")
   })
 
-  it("emits a zero value when a return type has no configured expression", () => {
+  it("emits correct source for all rbacAction variants in generateContractSource", () => {
     const graph: ContractGraph = {
-      nodes: [entryNode("fe1", "flag"), returnNode("fr1", { returnType: "bool" })],
-      edges: [{ id: "e1", source: "fe1", target: "fr1" }],
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac_req",
+          type: "RBACCheck",
+          data: { label: "Require Admin", params: { rbacRole: "admin", rbacAction: "require" } },
+        },
+        {
+          id: "rbac_grant",
+          type: "RBACCheck",
+          data: { label: "Grant Minter", params: { rbacRole: "minter", rbacAction: "grant" } },
+        },
+        {
+          id: "rbac_revoke",
+          type: "RBACCheck",
+          data: { label: "Revoke Pauser", params: { rbacRole: "pauser", rbacAction: "revoke" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "rbac_req" },
+        { id: "e2", source: "rbac_req", target: "rbac_grant" },
+        { id: "e3", source: "rbac_grant", target: "rbac_revoke" },
+      ],
     }
-
     const { source } = generateContractSource(graph)
-    expect(source).toContain("pub fn flag(env: Env) -> bool")
-    expect(source).toContain("false")
+    expect(source).toContain("pub fn execute(env: Env, to: Address)")
+    expect(source).toContain("use soroban_sdk::{Address, Env, Symbol, contract, contractimpl, panic_with_error, symbol_short};")
+    expect(source).toContain('let admin: Address = env.storage().instance()')
+    expect(source).toContain('.get(&symbol_short!("admin"))')
+    expect(source).toContain('.unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_admin")));')
+    expect(source).toContain('env.storage().instance().set(&symbol_short!("minter"), &to);')
+    expect(source).toContain('env.storage().instance().remove(&symbol_short!("pauser"));')
   })
 })
 

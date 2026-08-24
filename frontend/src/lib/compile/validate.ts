@@ -479,6 +479,7 @@ export function validateGraphStructure(graph: ContractGraph): CompileError | nul
     "Storage",
     "Event",
     "Auth",
+    "RBACCheck",
     "CrossContractCall",
   ])
   const executableNodes = graph.nodes.filter(
@@ -490,6 +491,23 @@ export function validateGraphStructure(graph: ContractGraph): CompileError | nul
       "NO_EXECUTABLE_BLOCKS",
       "Graph must contain at least one executable block (Auth, Transfer, Storage, Event, Condition, or Cross-Contract Call) reachable from Start."
     )
+  }
+
+  // RBACCheck nodes validation
+  for (const node of executableNodes) {
+    if (node.type !== "RBACCheck") continue
+    const role = node.data.params?.rbacRole ?? "admin"
+    if (role === "custom") {
+      const customRole = typeof node.data.params?.rbacCustomRole === "string"
+        ? node.data.params.rbacCustomRole.trim()
+        : ""
+      if (customRole === "") {
+        return invalid(
+          "INCOMPLETE_BLOCK",
+          `RBAC block "${node.data.label}" (node "${node.id}") has custom role selected but role name is empty.`
+        )
+      }
+    }
   }
 
   // Cross-contract calls cannot be compiled without a target contract and function.

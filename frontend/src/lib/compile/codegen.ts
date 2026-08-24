@@ -153,9 +153,24 @@ function deriveParams(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = [
     params.push({ name: "caller", rustType: "Address" })
   }
 
+  if (blockTypes.has("RBACCheck")) {
+    const hasToParam = nodes.some((n) => {
+      if (n.type !== "RBACCheck") return false
+      const action = n.data.params?.rbacAction ?? "require"
+      return action === "grant" || action === "revoke" || action === "transfer_admin"
+    })
+    if (hasToParam) {
+      params.push({ name: "to", rustType: "Address" })
+    }
+  }
+
   if (blockTypes.has("Transfer") || blockTypes.has("Event")) {
-    params.push({ name: "from", rustType: "Address" })
-    params.push({ name: "to", rustType: "Address" })
+    if (!params.some((p) => p.name === "from")) {
+      params.push({ name: "from", rustType: "Address" })
+    }
+    if (!params.some((p) => p.name === "to")) {
+      params.push({ name: "to", rustType: "Address" })
+    }
     params.push({ name: "amount", rustType: "i128" })
   }
 
@@ -190,7 +205,7 @@ function deriveParams(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = [
 function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = []): string[] {
   const imports = new Set<string>(["contract", "contractimpl", "Env"])
 
-  if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
+  if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event") || blockTypes.has("RBACCheck")) {
     imports.add("Address")
   }
 
@@ -198,14 +213,17 @@ function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = 
     imports.add("token")
   }
 
-  if (blockTypes.has("Storage") || blockTypes.has("Event") || blockTypes.has("Condition")) {
+  if (blockTypes.has("Storage") || blockTypes.has("Event") || blockTypes.has("Condition") || blockTypes.has("RBACCheck")) {
     imports.add("Symbol")
     imports.add("symbol_short")
   }
 
+  if (blockTypes.has("Condition") || blockTypes.has("RBACCheck")) {
+    imports.add("panic_with_error")
+  }
+
   if (blockTypes.has("Condition")) {
     imports.add("contracterror")
-    imports.add("panic_with_error")
   }
 
   for (const name of collectCrossContractImports(nodes)) {
@@ -227,6 +245,43 @@ function emitBlock(node: ContractGraphNode, crossCallIndexes: Map<string, number
 
     case "Auth":
       return `        // ${label}\n        caller.require_auth();`
+
+    case "RBACCheck": {
+      const roleKind = node.data.params?.rbacRole ?? "admin"
+      const roleStr = roleKind === "custom"
+        ? (node.data.params?.rbacCustomRole?.trim() || "custom")
+        : roleKind
+      const action = node.data.params?.rbacAction ?? "require"
+      const sym = sanitizeSymbol(roleStr)
+
+      switch (action) {
+        case "require":
+          return `        // RBACCheck: require ${roleStr}\n` +
+                 `        let admin: Address = env.storage().instance()\n` +
+                 `            .get(&symbol_short!("${sym}"))\n` +
+                 `            .unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_${sym.slice(0, 6)}")));\n` +
+                 `        admin.require_auth();`
+        case "grant":
+          return `        // RBACCheck: grant ${roleStr}\n` +
+                 `        env.storage().instance().set(&symbol_short!("${sym}"), &to);`
+        case "revoke":
+          return `        // RBACCheck: revoke ${roleStr}\n` +
+                 `        env.storage().instance().remove(&symbol_short!("${sym}"));`
+        case "transfer_admin":
+          return `        // RBACCheck: transfer admin — propose new admin\n` +
+                 `        env.storage().instance().set(&symbol_short!("adm_pend"), &to);`
+        case "confirm_admin":
+          return `        // RBACCheck: transfer admin — confirm new admin\n` +
+                 `        let pending: Address = env.storage().instance()\n` +
+                 `            .get(&symbol_short!("adm_pend"))\n` +
+                 `            .unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_pend")));\n` +
+                 `        pending.require_auth();\n` +
+                 `        env.storage().instance().set(&symbol_short!("admin"), &pending);\n` +
+                 `        env.storage().instance().remove(&symbol_short!("adm_pend"));`
+        default:
+          return `        // ${label}\n        caller.require_auth();`
+      }
+    }
 
     case "Transfer":
       return `        // ${label}\n        token::Client::new(&env, &token).transfer(&from, &to, &amount);`

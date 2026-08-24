@@ -48,6 +48,7 @@ const nodeTypes = {
   Storage: BlockNode,
   Event: BlockNode,
   Auth: BlockNode,
+  RBACCheck: BlockNode,
   CrossContractCall: BlockNode,
   FunctionEntry: BlockNode,
   FunctionReturn: BlockNode,

@@ -22,7 +22,7 @@
   "definitions": {
     "blockType": {
       "type": "string",
-      "enum": ["default", "Condition", "Transfer", "Storage", "Event", "Auth"]
+      "enum": ["default", "Condition", "Transfer", "Storage", "Event", "Auth", "RBACCheck"]
     },
     "transferAsset": {
       "type": "object",

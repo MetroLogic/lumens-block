@@ -41,13 +41,16 @@ export interface GraphDiff {
 }
 
 /** Block types that produce contract behaviour (everything except the Start node). */
-const EXECUTABLE_BLOCK_TYPES = new Set(["Auth", "Transfer", "Storage", "Event", "Condition"])
+const EXECUTABLE_BLOCK_TYPES = new Set(["Auth", "RBACCheck", "Transfer", "Storage", "Event", "Condition"])
 
 /** Storage key default used by codegen when a Storage block omits `storageKey`. */
 const DEFAULT_STORAGE_KEY = "stored"
 
-/** Node types whose relative execution order affects contract behaviour. */
-const ORDER_SENSITIVE_TYPES = new Set(["Auth", "Transfer"])
+/**
+ * Types whose topological sequence is sensitive to ordering changes.
+ * Moving an Auth/RBAC/Transfer node relative to others produces a different diff status.
+ */
+const ORDER_SENSITIVE_TYPES = new Set(["Auth", "RBACCheck", "Transfer"])
 
 function diffNodeFields(prev: ContractGraphNode, next: ContractGraphNode): string[] {
   const changed: string[] = []

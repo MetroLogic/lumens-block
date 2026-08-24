@@ -402,3 +402,107 @@ describe("compileGraph — Storage read/write mode", () => {
     expect(code).toContain("pub fn get_balance(env: Env) -> i128")
   })
 })
+
+describe("compileGraph — RBACCheck block type", () => {
+  it("emits correct Rust for rbacAction require", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac1",
+          type: "RBACCheck",
+          data: { label: "RBAC Check", params: { rbacRole: "admin", rbacAction: "require" } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "rbac1" }],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn execute(env: Env)")
+    expect(code).toContain("use soroban_sdk:{Address, Env, Symbol, contract, contractimpl, panic_with_error, symbol_short};")
+    expect(code).toContain('let admin: Address = env.storage().instance()')
+    expect(code).toContain('.get(&symbol_short!("admin"))')
+    expect(code).toContain('.unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_admin")));')
+    expect(code).toContain("admin.require_auth();")
+  })
+
+  it("emits correct Rust for rbacAction grant and derives to: Address parameter", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac1",
+          type: "RBACCheck",
+          data: { label: "Grant Minter", params: { rbacRole: "minter", rbacAction: "grant" } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "rbac1" }],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn execute(env: Env, to: Address)")
+    expect(code).toContain('env.storage().instance().set(&symbol_short!("minter"), &to);')
+  })
+
+  it("emits correct Rust for rbacAction revoke and derives to: Address parameter", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac1",
+          type: "RBACCheck",
+          data: { label: "Revoke Minter", params: { rbacRole: "minter", rbacAction: "revoke" } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "rbac1" }],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn execute(env: Env, to: Address)")
+    expect(code).toContain('env.storage().instance().remove(&symbol_short!("minter"));')
+  })
+
+  it("emits correct Rust for transfer_admin and confirm_admin pattern", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac_propose",
+          type: "RBACCheck",
+          data: { label: "Transfer Admin", params: { rbacRole: "admin", rbacAction: "transfer_admin" } },
+        },
+        {
+          id: "rbac_confirm",
+          type: "RBACCheck",
+          data: { label: "Confirm Admin", params: { rbacRole: "admin", rbacAction: "confirm_admin" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "rbac_propose" },
+        { id: "e2", source: "rbac_propose", target: "rbac_confirm" },
+      ],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain("pub fn execute(env: Env, to: Address)")
+    expect(code).toContain('env.storage().instance().set(&symbol_short!("adm_pend"), &to);')
+    expect(code).toContain('let pending: Address = env.storage().instance()')
+    expect(code).toContain('.get(&symbol_short!("adm_pend"))')
+    expect(code).toContain('pending.require_auth();')
+    expect(code).toContain('env.storage().instance().set(&symbol_short!("admin"), &pending);')
+    expect(code).toContain('env.storage().instance().remove(&symbol_short!("adm_pend"));')
+  })
+
+  it("emits correct Rust for custom role name", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac1",
+          type: "RBACCheck",
+          data: { label: "Check Operator", params: { rbacRole: "custom", rbacCustomRole: "operator", rbacAction: "require" } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "rbac1" }],
+    }
+    const code = compileGraph(graph)
+    expect(code).toContain('.get(&symbol_short!("operator"))')
+    expect(code).toContain('.unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_operat")));')
+  })
+})

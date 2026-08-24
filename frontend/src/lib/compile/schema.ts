@@ -49,12 +49,19 @@ export const BLOCK_TYPES = [
   "Storage",
   "Event",
   "Auth",
+  "RBACCheck",
   "CrossContractCall",
   "FunctionEntry",
   "FunctionReturn",
 ] as const
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
+
+/** RBAC role kinds. */
+export type RbacRole = "admin" | "minter" | "pauser" | "custom"
+
+/** RBAC actions. */
+export type RbacAction = "require" | "grant" | "revoke" | "transfer_admin" | "confirm_admin"
 
 /** Storage mode for Storage blocks. */
 export type StorageMode = "read" | "write"
@@ -161,6 +168,12 @@ export interface BlockParameters {
   storageReturnType?: "i128" | "bool" | "Symbol" | "Address"
   /** Event name for Event blocks */
   eventName?: string
+  /** RBAC role selection */
+  rbacRole?: RbacRole
+  /** Custom RBAC role name when rbacRole === "custom" */
+  rbacCustomRole?: string
+  /** RBAC action */
+  rbacAction?: RbacAction
   /** Condition expression label for Condition blocks (legacy free-text, kept for backward compat) */
   condition?: string
   /**
