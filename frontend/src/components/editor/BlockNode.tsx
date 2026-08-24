@@ -22,6 +22,8 @@ import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 interface NodeData {
   label: string
   params?: BlockParameters
+  /** Set by BlockEditor when this node participates in a control-flow cycle. */
+  hasCycleError?: boolean
 }
 
 interface BlockNodeProps {
@@ -197,9 +199,14 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
   return (
     <div
       data-testid={`block-node-${type}`}
+      data-error={data.hasCycleError ? "cycle" : undefined}
       className={`relative rounded-xl border-2 shadow-sm font-sans min-w-[180px] ${
         selected ? "ring-2 ring-blue-500 ring-offset-1" : ""
-      } ${colorClasses}`}
+      } ${
+        data.hasCycleError
+          ? "border-red-500 ring-2 ring-red-500 bg-red-50 text-red-900 dark:border-red-500 dark:ring-red-500 dark:bg-red-950/50 dark:text-red-200"
+          : colorClasses
+      }`}
     >
       {/* Target handle on top */}
       <Handle

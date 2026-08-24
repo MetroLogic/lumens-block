@@ -230,6 +230,10 @@ export interface CompileError {
   code: string
   message: string
   details?: string[]
+  /** Discriminator for structured editor errors (e.g. `"cycle"`). */
+  type?: string
+  /** Node ids that participate in the error — a cycle path repeats the start id at the end. */
+  nodeIds?: string[]
 }
 
 export interface CompileSuccess {

@@ -14,6 +14,7 @@ import ReactFlow, {
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { findCycle, formatCycleMessage } from "@/lib/compile/cycle"
 import { inferGraphTypes, type TypeMismatchError } from "@/lib/compile/typeInference"
 import { applyAutoLayout } from "@/lib/layout"
 import {
@@ -73,6 +74,7 @@ export default function BlockEditor() {
   const [deployedContractId, setDeployedContractId] = useState<string | null>(null)
   const [typeErrors, setTypeErrors] = useState<TypeMismatchError[]>([])
   const [hoveredErrorEdge, setHoveredErrorEdge] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [cycleError, setCycleError] = useState<{ message: string; nodeIds: string[] } | null>(null)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -291,6 +293,36 @@ export default function BlockEditor() {
     return () => window.clearTimeout(timer)
   }, [nodes, edges])
 
+  // Debounced cycle detection so cyclic nodes highlight as soon as the user
+  // closes a loop, without waiting for Code Preview / Deploy.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const graph = toContractGraph(nodes, edges)
+      const path = findCycle(graph)
+      if (!path) {
+        setCycleError(null)
+        return
+      }
+      setCycleError({ message: formatCycleMessage(graph, path), nodeIds: path })
+    }, GRAPH_AUTOSAVE_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [nodes, edges])
+
+  const styledNodes = useMemo(() => {
+    if (!cycleError) return nodes
+    const ids = new Set(cycleError.nodeIds)
+    return nodes.map((node) =>
+      ids.has(node.id)
+        ? {
+            ...node,
+            className: [node.className, "cycle-error-node"].filter(Boolean).join(" "),
+            data: { ...node.data, hasCycleError: true },
+          }
+        : node
+    )
+  }, [nodes, cycleError])
+
   // Maps edgeId → the first mismatch message for that edge, for red styling
   // and the hover tooltip below.
   const typeErrorsByEdge = useMemo(() => {
@@ -373,7 +405,7 @@ export default function BlockEditor() {
 
       <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
-          nodes={nodes}
+          nodes={styledNodes}
           edges={styledEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -415,6 +447,15 @@ export default function BlockEditor() {
             </label>
           </div>
         )}
+        {cycleError && (
+          <div
+            data-testid="cycle-error-banner"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+          >
+            <p className="font-semibold">{cycleError.message}</p>
+            <p className="mt-1">Soroban contracts cannot have cyclic control flow.</p>
+          </div>
+        )}
         {typeErrors.length > 0 && (
           <div
             data-testid="type-error-banner"
@@ -427,6 +468,7 @@ export default function BlockEditor() {
         )}
         <div className="flex items-center gap-3">
           <button
+            data-testid="code-preview-button"
             onClick={() => setIsCodePreviewOpen(true)}
             disabled={typeErrors.length > 0}
             className="relative flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"

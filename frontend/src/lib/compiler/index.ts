@@ -14,6 +14,7 @@ import {
   emitCrossContractClients,
   getCrossContractNodes,
 } from "../compile/crossContract"
+import { findCycle, formatCycleMessage } from "../compile/cycle"
 import {
   collectFunctionGroups,
   hasFunctionEntries,
@@ -94,31 +95,9 @@ export function topologicalSort(
     console.warn(warningMsg)
   }
 
-  // Check for cycles within reachable nodes using DFS (3-color approach: 0=unvisited, 1=visiting, 2=visited)
-  const visitState = new Map<string, number>()
-  for (const id of reachable) {
-    visitState.set(id, 0)
-  }
-
-  function dfsCycleCheck(nodeId: string): boolean {
-    visitState.set(nodeId, 1) // visiting
-    for (const neighbor of adjacency.get(nodeId) ?? []) {
-      if (!reachable.has(neighbor)) continue
-      const state = visitState.get(neighbor)
-      if (state === 1) {
-        // Back edge detected -> cycle!
-        return true
-      }
-      if (state === 0) {
-        if (dfsCycleCheck(neighbor)) return true
-      }
-    }
-    visitState.set(nodeId, 2) // visited
-    return false
-  }
-
-  if (dfsCycleCheck(startNode.id)) {
-    throw new Error("Cyclic graph detected: graph contains a cycle.")
+  const cyclePath = findCycle(graph)
+  if (cyclePath) {
+    throw new Error(formatCycleMessage(graph, cyclePath))
   }
 
   // Calculate in-degrees restricted to reachable nodes
@@ -168,6 +147,11 @@ export function topologicalSort(
  * Generates Soroban Rust source code from each node type in topological order.
  */
 export function compileGraph(graph: ContractGraph, options?: CompileGraphOptions): string {
+  const cyclePath = findCycle(graph)
+  if (cyclePath) {
+    throw new Error(formatCycleMessage(graph, cyclePath))
+  }
+
   if (hasFunctionEntries(graph)) {
     return compileFunctionGroups(graph, options)
   }

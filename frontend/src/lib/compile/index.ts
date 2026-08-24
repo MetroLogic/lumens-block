@@ -45,6 +45,8 @@ export {
 } from "./functions"
 export type { FunctionGroup } from "./functions"
 
+export { findCycle, formatCycleMessage } from "./cycle"
+
 export {
   normalizeReactFlowGraph,
   validateContractGraph,

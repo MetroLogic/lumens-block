@@ -16,6 +16,7 @@ import {
   type CrossContractArg,
   type Operand,
 } from "./schema"
+import { cycleValidationError, findCycle } from "./cycle"
 import { collectFunctionGroups, hasFunctionEntries } from "./functions"
 import { inferGraphTypes } from "./typeInference"
 
@@ -433,6 +434,14 @@ export function validateContractGraph(
  * Ensures executable blocks are reachable from Start and the graph has actionable logic.
  */
 export function validateGraphStructure(graph: ContractGraph): CompileError | null {
+  // Cycles are always a user error: Soroban has no graph-edge loops.
+  // Check the whole graph (including disconnected components) before any
+  // other structure rule so codegen never sees a cyclic input.
+  const cyclePath = findCycle(graph)
+  if (cyclePath) {
+    return cycleValidationError(graph, cyclePath)
+  }
+
   // Graphs with explicit entry points are validated per function instead of by
   // reachability from a single Start node.
   if (hasFunctionEntries(graph)) {

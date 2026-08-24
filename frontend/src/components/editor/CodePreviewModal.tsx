@@ -96,7 +96,10 @@ export default function CodePreviewModal({ isOpen, onClose, nodes, edges }: Prop
         {/* Content Body */}
         <div className="flex-1 overflow-auto p-6 font-mono text-sm">
           {error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+            <div
+              data-testid="compile-error"
+              className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+            >
               <h3 className="font-semibold text-red-900 dark:text-red-200">Compilation Error</h3>
               <p className="mt-1 text-sm">{error}</p>
             </div>

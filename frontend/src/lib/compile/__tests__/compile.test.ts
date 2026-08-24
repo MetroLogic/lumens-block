@@ -80,6 +80,103 @@ describe("validateGraphStructure", () => {
   })
 })
 
+describe("validateGraphStructure — cycle detection", () => {
+  it("does not report a cycle for a linear graph A → B → C", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "A", type: "default", data: { label: "Start" } },
+        { id: "B", type: "Auth", data: { label: "Auth" } },
+        { id: "C", type: "Transfer", data: { label: "Transfer" } },
+      ],
+      edges: [
+        { id: "e1", source: "A", target: "B" },
+        { id: "e2", source: "B", target: "C" },
+      ],
+    })
+    expect(error?.type).not.toBe("cycle")
+    expect(error?.code).not.toBe("CYCLE_DETECTED")
+    expect(error).toBeNull()
+  })
+
+  it("detects a self-loop A → A and nodeIds contains A", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "A", type: "Auth", data: { label: "Auth" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "A" },
+        { id: "e2", source: "A", target: "A" },
+      ],
+    })
+    expect(error?.type).toBe("cycle")
+    expect(error?.code).toBe("CYCLE_DETECTED")
+    expect(error?.nodeIds).toContain("A")
+    expect(new Set(error?.nodeIds)).toEqual(new Set(["A"]))
+    expect(error?.message).toMatch(/Cycle detected/)
+  })
+
+  it("detects a two-node cycle A → B → A", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "A", type: "Auth", data: { label: "Auth" } },
+        { id: "B", type: "Transfer", data: { label: "Transfer" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "A" },
+        { id: "e2", source: "A", target: "B" },
+        { id: "e3", source: "B", target: "A" },
+      ],
+    })
+    expect(error?.type).toBe("cycle")
+    expect(error?.code).toBe("CYCLE_DETECTED")
+    expect(error?.nodeIds).toEqual(expect.arrayContaining(["A", "B"]))
+    expect(error?.nodeIds?.[0]).toBe(error?.nodeIds?.[error.nodeIds.length - 1])
+    expect(new Set(error?.nodeIds)).toEqual(new Set(["A", "B"]))
+    expect(error?.message).toMatch(/Cycle detected: Auth → Transfer → Auth/)
+  })
+
+  it("detects a longer cycle A → B → C → D → B and returns only cycle participants", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "A", type: "default", data: { label: "Start" } },
+        { id: "B", type: "Auth", data: { label: "Auth" } },
+        { id: "C", type: "Transfer", data: { label: "Transfer" } },
+        { id: "D", type: "Event", data: { label: "Event" } },
+      ],
+      edges: [
+        { id: "e1", source: "A", target: "B" },
+        { id: "e2", source: "B", target: "C" },
+        { id: "e3", source: "C", target: "D" },
+        { id: "e4", source: "D", target: "B" },
+      ],
+    })
+    expect(error?.type).toBe("cycle")
+    expect(error?.code).toBe("CYCLE_DETECTED")
+    expect(error?.nodeIds).toEqual(["B", "C", "D", "B"])
+    expect(error?.nodeIds).not.toContain("A")
+    expect(new Set(error?.nodeIds)).toEqual(new Set(["B", "C", "D"]))
+    expect(error?.message).toMatch(/Cycle detected: Auth → Transfer → Event → Auth/)
+  })
+
+  it("blocks generateContractSource from running on a cyclic graph", () => {
+    const cyclic: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "A", type: "Auth", data: { label: "Auth" } },
+        { id: "B", type: "Transfer", data: { label: "Transfer" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "A" },
+        { id: "e2", source: "A", target: "B" },
+        { id: "e3", source: "B", target: "A" },
+      ],
+    }
+    expect(() => generateContractSource(cyclic)).toThrow(/Cycle detected/)
+  })
+})
+
 describe("generateContractSource", () => {
   it("generates Rust with Transfer logic for token-transfer template", () => {
     const { source, blockOrder } = generateContractSource(transferGraph)
