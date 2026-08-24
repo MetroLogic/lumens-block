@@ -31,6 +31,7 @@ export const EXECUTABLE_TYPES = new Set<BlockType>([
   "Storage",
   "Event",
   "Condition",
+  "RBACCheck",
   "CrossContractCall",
 ])
 
