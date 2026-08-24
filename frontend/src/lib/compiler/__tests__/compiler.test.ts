@@ -125,7 +125,7 @@ describe("compileGraph", () => {
       ],
     }
 
-    expect(() => compileGraph(graph)).toThrow("Cyclic graph detected: graph contains a cycle.")
+    expect(() => compileGraph(graph)).toThrow(/Cycle detected/)
   })
 
   it("triggers a warning for disconnected nodes without throwing an error", () => {

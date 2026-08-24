@@ -27,7 +27,13 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      // Playwright's bundled Chromium 127 (build 1124) is a 212KB stub in this
+      // environment and fails to spawn on macOS 27 (`Unknown system error -88`).
+      // Locally use the installed Google Chrome; CI still uses bundled Chromium.
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(process.env.CI ? {} : { channel: "chrome" }),
+      },
     },
   ],
   /* Auto-start the Next.js dev server */
