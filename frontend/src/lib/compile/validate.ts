@@ -17,8 +17,9 @@ import {
   type Operand,
 } from "./schema"
 import { cycleValidationError, findCycle } from "./cycle"
-import { collectFunctionGroups, hasFunctionEntries } from "./functions"
+import { collectFunctionGroups, hasFunctionEntries, EXECUTABLE_TYPES } from "./functions"
 import { inferGraphTypes } from "./typeInference"
+import { validateLoopBlocks } from "./loop"
 
 function invalid(code: string, message: string, details?: string[]): CompileError {
   return { code, message, details }
@@ -442,6 +443,9 @@ export function validateGraphStructure(graph: ContractGraph): CompileError | nul
     return cycleValidationError(graph, cyclePath)
   }
 
+  const loopError = validateLoopBlocks(graph)
+  if (loopError) return loopError
+
   // Graphs with explicit entry points are validated per function instead of by
   // reachability from a single Start node.
   if (hasFunctionEntries(graph)) {
@@ -473,23 +477,14 @@ export function validateGraphStructure(graph: ContractGraph): CompileError | nul
     }
   }
 
-  const executableTypes = new Set([
-    "Condition",
-    "Transfer",
-    "Storage",
-    "Event",
-    "Auth",
-    "RBACCheck",
-    "CrossContractCall",
-  ])
   const executableNodes = graph.nodes.filter(
-    (n) => executableTypes.has(n.type) && reachable.has(n.id)
+    (n) => EXECUTABLE_TYPES.has(n.type) && reachable.has(n.id)
   )
 
   if (executableNodes.length === 0) {
     return invalid(
       "NO_EXECUTABLE_BLOCKS",
-      "Graph must contain at least one executable block (Auth, Transfer, Storage, Event, Condition, or Cross-Contract Call) reachable from Start."
+      "Graph must contain at least one executable block (Auth, RBACCheck, Transfer, Storage, Event, Condition, Cross-Contract Call, or Loop) reachable from Start."
     )
   }
 

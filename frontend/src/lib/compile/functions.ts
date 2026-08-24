@@ -33,6 +33,7 @@ export const EXECUTABLE_TYPES = new Set<BlockType>([
   "Condition",
   "RBACCheck",
   "CrossContractCall",
+  "Loop",
 ])
 
 /** One resolved function: its entry block, signature, and ordered body. */

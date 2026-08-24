@@ -41,6 +41,7 @@ import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
+import { DEFAULT_LOOP_CONFIG } from "@/lib/compile/schema"
 
 const nodeTypes = {
   Condition: BlockNode,
@@ -52,6 +53,7 @@ const nodeTypes = {
   CrossContractCall: BlockNode,
   FunctionEntry: BlockNode,
   FunctionReturn: BlockNode,
+  Loop: BlockNode,
   default: BlockNode,
 }
 
@@ -119,7 +121,10 @@ export default function BlockEditor() {
         id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
         position,
-        data: { label: type },
+        data: {
+          label: type,
+          ...(type === "Loop" ? { params: { loop: { ...DEFAULT_LOOP_CONFIG } } } : {}),
+        },
       }
 
       setNodes((nds) => nds.concat(newNode))
@@ -212,7 +217,10 @@ export default function BlockEditor() {
         id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
         position,
-        data: { label: type },
+        data: {
+          label: type,
+          ...(type === "Loop" ? { params: { loop: { ...DEFAULT_LOOP_CONFIG } } } : {}),
+        },
       }
 
       setNodes((nds) => nds.concat(newNode))

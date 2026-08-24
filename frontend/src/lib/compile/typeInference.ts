@@ -90,6 +90,8 @@ function getDeclaredPortTypes(node: ContractGraphNode): PortType[] {
       return node.data.params?.conditionExpression
         ? [at("true", "bool"), at("false", "bool")]
         : []
+    case "Loop":
+      return [at("items", "i128"), at("result", "i128")]
     default:
       return []
   }
@@ -187,6 +189,16 @@ function deriveImplicitArgTypes(
 
   if (blockTypes.has("Condition")) scope.set("release", "bool")
   if (blockTypes.has("Event")) scope.set("event_name", "Symbol")
+  if (blockTypes.has("Loop")) {
+    const hasRange = nodes.some(
+      (n) => n.type === "Loop" && (n.data.params?.loop?.mode ?? "range") === "range"
+    )
+    const hasVec = nodes.some((n) => n.type === "Loop" && n.data.params?.loop?.mode === "vec")
+    if (hasRange || (blockTypes.has("Loop") && !hasVec)) {
+      scope.set("start", "i128")
+      scope.set("end", "i128")
+    }
+  }
 
   return scope
 }

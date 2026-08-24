@@ -41,7 +41,9 @@ export interface GraphDiff {
 }
 
 /** Block types that produce contract behaviour (everything except the Start node). */
-const EXECUTABLE_BLOCK_TYPES = new Set(["Auth", "RBACCheck", "Transfer", "Storage", "Event", "Condition"])
+const EXECUTABLE_BLOCK_TYPES = new Set([
+  "Auth", "RBACCheck", "Transfer", "Storage", "Event", "Condition", "Loop"
+])
 
 /** Storage key default used by codegen when a Storage block omits `storageKey`. */
 const DEFAULT_STORAGE_KEY = "stored"

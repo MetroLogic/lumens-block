@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo } from "react"
 import { Handle, Position, useNodes, useReactFlow } from "reactflow"
+import { Repeat } from "lucide-react"
 import ConditionExpressionBuilder from "./ConditionExpressionBuilder"
 import AssetSelector from "./AssetSelector"
 import CrossContractCallConfig from "./CrossContractCallConfig"
@@ -12,9 +13,20 @@ import type {
   FunctionVisibility,
   RbacAction,
   RbacRole,
+  LoopConfig,
+  LoopMode,
   TransferAsset,
 } from "@/lib/compile/schema"
-import { FUNCTION_VISIBILITIES, MAX_FUNCTION_PARAMS } from "@/lib/compile/schema"
+import {
+  DEFAULT_LOOP_CONFIG,
+  FUNCTION_VISIBILITIES,
+  LOOP_BODY_HANDLE,
+  LOOP_ITEMS_HANDLE,
+  LOOP_RESULT_HANDLE,
+  MAX_FUNCTION_PARAMS,
+  MAX_LOOP_ITERATIONS,
+  MIN_LOOP_ITERATIONS,
+} from "@/lib/compile/schema"
 import { sanitizeRustIdent } from "@/lib/compile/crossContract"
 import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
@@ -127,6 +139,13 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
       badgeColor = "bg-teal-200/60 text-teal-800 dark:bg-teal-900/60 dark:text-teal-200"
       panelBorder = "border-teal-200 bg-teal-50/80 dark:border-teal-800 dark:bg-teal-950/50"
       break
+    case "Loop":
+      colorClasses =
+        "bg-orange-50 border-orange-300 text-orange-900 shadow-orange-100 dark:bg-orange-950/40 dark:border-orange-700/60 dark:text-orange-200 dark:shadow-none"
+      badgeColor = "bg-orange-200/60 text-orange-800 dark:bg-orange-900/60 dark:text-orange-200"
+      panelBorder =
+        "border-orange-200 bg-orange-50/80 dark:border-orange-800 dark:bg-orange-950/50"
+      break
     case "default":
       colorClasses =
         "bg-blue-50 border-blue-300 text-blue-900 shadow-blue-100 dark:bg-blue-950/40 dark:border-blue-700/60 dark:text-blue-200 dark:shadow-none"
@@ -185,6 +204,15 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
     })
   }
 
+  const loopConfig: LoopConfig = {
+    ...DEFAULT_LOOP_CONFIG,
+    ...(data.params?.loop ?? {}),
+  }
+
+  const updateLoop = (patch: Partial<LoopConfig>) => {
+    updateParams({ loop: { ...loopConfig, ...patch } })
+  }
+
   // Default Transfer asset to XLM when the panel opens and nothing is stored yet
   useEffect(() => {
     if (type !== "Transfer" || !selected) return
@@ -203,6 +231,10 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
     type === "Storage"
       ? (data.params?.storageMode ?? "write") === "read" ? "Read" : "Write"
       : null
+  const loopBadge =
+    type === "Loop"
+      ? `${loopConfig.mode} · max ${loopConfig.maxIterations}`
+      : null
 
   // -------------------------------------------------------------------------
   // Render
@@ -219,12 +251,35 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           : colorClasses
       }`}
     >
-      {/* Target handle on top */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
-      />
+      {type === "Loop" ? (
+        <>
+          <Handle
+            type="target"
+            id={LOOP_ITEMS_HANDLE}
+            position={Position.Top}
+            data-testid="loop-handle-items"
+            title="items"
+            className="!bg-orange-400 !w-2.5 !h-2.5 hover:!bg-orange-600 transition-colors"
+          />
+          <Handle
+            type="source"
+            id={LOOP_BODY_HANDLE}
+            position={Position.Right}
+            data-testid="loop-handle-body"
+            title="body"
+            className="!bg-orange-500 !w-3 !h-3 hover:!bg-orange-700 transition-colors"
+          />
+          <span className="pointer-events-none absolute -right-8 top-1/2 -translate-y-1/2 text-[9px] font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+            body
+          </span>
+        </>
+      ) : (
+        <Handle
+          type="target"
+          position={Position.Top}
+          className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
+        />
+      )}
 
       {/* Node header */}
       <div className="flex flex-col items-center gap-1 px-4 py-3 text-center">
@@ -259,6 +314,15 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
             title={data.params?.targetContractId}
           >
             {crossContractBadge}
+          </span>
+        )}
+        {loopBadge && (
+          <span
+            className={`mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${badgeColor}`}
+            title={`Loop ${loopBadge}`}
+          >
+            <Repeat size={10} aria-hidden="true" />
+            {loopBadge}
           </span>
         )}
       </div>
@@ -608,10 +672,96 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
         </div>
       )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Loop config panel — only visible when node is selected               */}
+      {/* ------------------------------------------------------------------ */}
+      {type === "Loop" && selected && (
+        <div
+          data-testid="config-panel"
+          className={`border-t-2 rounded-b-xl px-3 py-3 min-w-[230px] ${panelBorder}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-300">
+            <Repeat size={12} aria-hidden="true" />
+            Loop Config
+          </p>
+
+          <div className="mb-2">
+            <label className="block text-[10px] font-medium text-orange-800 dark:text-orange-200 mb-1">
+              Loop mode
+            </label>
+            <div className="flex rounded overflow-hidden border border-orange-300 dark:border-orange-700 text-[11px] font-semibold">
+              {(["range", "vec"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  data-testid={`loop-mode-${mode}`}
+                  className={`flex-1 py-1 transition-colors ${
+                    loopConfig.mode === mode
+                      ? "bg-orange-400 text-white dark:bg-orange-600"
+                      : "bg-white text-orange-700 dark:bg-orange-950 dark:text-orange-300 hover:bg-orange-100 dark:hover:bg-orange-900"
+                  }`}
+                  onClick={() => updateLoop({ mode: mode as LoopMode })}
+                >
+                  {mode === "range" ? "Range" : "Vec"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loopConfig.mode === "range" ? (
+            <p className="mb-2 text-[10px] leading-snug text-orange-700/80 dark:text-orange-300/80">
+              Iterates <span className="font-mono">start..end</span> (function params), capped by max iterations.
+            </p>
+          ) : (
+            <p className="mb-2 text-[10px] leading-snug text-orange-700/80 dark:text-orange-300/80">
+              Iterates the <span className="font-mono">Vec&lt;i128&gt;</span> connected to the items port, capped by max iterations.
+            </p>
+          )}
+
+          <div className="mb-2">
+            <label className="block text-[10px] font-medium text-orange-800 dark:text-orange-200 mb-1">
+              Max iterations
+            </label>
+            <input
+              data-testid="loop-max-iterations"
+              type="number"
+              min={MIN_LOOP_ITERATIONS}
+              max={MAX_LOOP_ITERATIONS}
+              value={loopConfig.maxIterations}
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10)
+                updateLoop({
+                  maxIterations: Number.isFinite(parsed) ? parsed : loopConfig.maxIterations,
+                })
+              }}
+              className="w-full rounded border border-orange-300 dark:border-orange-700 bg-white dark:bg-orange-950 text-orange-800 dark:text-orange-200 text-xs px-2 py-1"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-orange-800 dark:text-orange-200 mb-1">
+              Iterator variable
+            </label>
+            <input
+              data-testid="loop-iterator-var"
+              type="text"
+              value={loopConfig.iteratorVar}
+              onChange={(e) => updateLoop({ iteratorVar: e.target.value })}
+              placeholder="i"
+              className="w-full rounded border border-orange-300 dark:border-orange-700 bg-white dark:bg-orange-950 text-orange-800 dark:text-orange-200 text-xs px-2 py-1 font-mono"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Source handle on bottom */}
       <Handle
         type="source"
+        id={type === "Loop" ? LOOP_RESULT_HANDLE : undefined}
         position={Position.Bottom}
+        data-testid={type === "Loop" ? "loop-handle-result" : undefined}
         className="!bg-gray-400 !w-2.5 !h-2.5 hover:!bg-blue-500 transition-colors"
       />
     </div>

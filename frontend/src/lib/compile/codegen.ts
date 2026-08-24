@@ -12,6 +12,13 @@ import {
   hasFunctionEntries,
   type FunctionGroup,
 } from "./functions"
+import {
+  collectAllLoopBodyIds,
+  emitLoopRust,
+  getLoopBodyNodes,
+  graphHasRangeLoop,
+  graphHasVecLoop,
+} from "./loop"
 import { validateGraphStructure } from "./validate"
 
 export interface CodegenResult {
@@ -60,6 +67,7 @@ export function getExecutionOrder(graph: ContractGraph, rootId?: string): Contra
   const visited = new Set<string>()
   const order: ContractGraphNode[] = []
   const queue = [start.id]
+  const loopBodyIds = collectAllLoopBodyIds(graph)
 
   while (queue.length > 0) {
     const id = queue.shift()!
@@ -72,7 +80,8 @@ export function getExecutionOrder(graph: ContractGraph, rootId?: string): Contra
     // A return terminates the branch; nothing past it belongs to this function.
     if (node.type === "FunctionReturn") continue
 
-    if (EXECUTABLE_TYPES.has(node.type)) {
+    // Body-subgraph nodes are emitted inside the Loop, not as top-level statements.
+    if (EXECUTABLE_TYPES.has(node.type) && !loopBodyIds.has(node.id)) {
       order.push(node)
     }
 
@@ -99,8 +108,9 @@ export function getFunctionParamsFromGraph(graph: ContractGraph): FunctionParam[
   }
 
   const executionOrder = getExecutionOrder(graph)
-  const blockTypes = new Set(executionOrder.map((n) => n.type))
-  return deriveParams(blockTypes, executionOrder)
+  const nodes = withLoopBodies(graph, executionOrder)
+  const blockTypes = new Set(nodes.map((n) => n.type))
+  return deriveParams(blockTypes, nodes)
 }
 
 /**
@@ -122,7 +132,7 @@ export function functionSignature(group: FunctionGroup): FunctionParam[] {
   }
 
   const blockTypes = new Set(group.body.map((n) => n.type))
-  for (const derived of deriveParams(blockTypes)) {
+  for (const derived of deriveParams(blockTypes, group.body)) {
     if (seen.has(derived.name)) continue
     seen.add(derived.name)
     params.push(derived)
@@ -196,6 +206,15 @@ function deriveParams(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = [
     params.push({ name: "event_name", rustType: "Symbol" })
   }
 
+  if (graphHasRangeLoop(nodes) || (blockTypes.has("Loop") && !graphHasVecLoop(nodes))) {
+    if (!params.some((p) => p.name === "start")) params.push({ name: "start", rustType: "i128" })
+    if (!params.some((p) => p.name === "end")) params.push({ name: "end", rustType: "i128" })
+  }
+
+  if (graphHasVecLoop(nodes)) {
+    if (!params.some((p) => p.name === "items")) params.push({ name: "items", rustType: "Vec<i128>" })
+  }
+
   // Arguments and target addresses required by CrossContractCall blocks.
   params.push(...crossContractParams(nodes, params.map((param) => param.name)))
 
@@ -226,6 +245,10 @@ function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = 
     imports.add("contracterror")
   }
 
+  if (blockTypes.has("Loop")) {
+    imports.add("Vec")
+  }
+
   for (const name of collectCrossContractImports(nodes)) {
     imports.add(name)
   }
@@ -233,7 +256,11 @@ function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = 
   return Array.from(imports).sort()
 }
 
-function emitBlock(node: ContractGraphNode, crossCallIndexes: Map<string, number>): string {
+function emitBlock(
+  node: ContractGraphNode,
+  crossCallIndexes: Map<string, number>,
+  graph: ContractGraph
+): string {
   const label = node.data.label.replace(/"/g, '\\"')
 
   switch (node.type) {
@@ -309,6 +336,15 @@ function emitBlock(node: ContractGraphNode, crossCallIndexes: Map<string, number
       }
       // Legacy fallback (no expression defined yet)
       return `        // ${label}\n        if !release {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
+    }
+
+    case "Loop": {
+      const bodyNodes = getLoopBodyNodes(graph, node.id).nodes
+      const bodySource = bodyNodes
+        .map((bodyNode) => emitBlock(bodyNode, crossCallIndexes, graph))
+        .filter(Boolean)
+        .join("\n\n")
+      return emitLoopRust(node, bodySource)
     }
 
     default:
@@ -416,6 +452,19 @@ function fnv1aHash(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0")
 }
 
+/** Main-order nodes plus every Loop body subgraph they contain (for params/imports). */
+function withLoopBodies(graph: ContractGraph, mainOrder: ContractGraphNode[]): ContractGraphNode[] {
+  const seen = new Set(mainOrder.map((n) => n.id))
+  const extra: ContractGraphNode[] = []
+  const bodyIds = collectAllLoopBodyIds(graph)
+  for (const node of graph.nodes) {
+    if (seen.has(node.id) || !bodyIds.has(node.id)) continue
+    extra.push(node)
+    seen.add(node.id)
+  }
+  return [...mainOrder, ...extra]
+}
+
 /**
  * Generates Soroban Rust source from a validated contract graph.
  */
@@ -430,26 +479,27 @@ export function generateContractSource(graph: ContractGraph): CodegenResult {
   }
 
   const executionOrder = getExecutionOrder(graph)
-  const blockTypes = new Set(executionOrder.map((n) => n.type))
+  const codegenNodes = withLoopBodies(graph, executionOrder)
+  const blockTypes = new Set(codegenNodes.map((n) => n.type))
 
-  const imports = deriveImports(blockTypes, executionOrder)
-  const params = deriveParams(blockTypes, executionOrder)
+  const imports = deriveImports(blockTypes, codegenNodes)
+  const params = deriveParams(blockTypes, codegenNodes)
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
 
   const crossCallIndexes = new Map(
-    getCrossContractNodes(executionOrder).map((node, index) => [node.id, index])
+    getCrossContractNodes(codegenNodes).map((node, index) => [node.id, index])
   )
   const body = executionOrder
-    .map((node) => emitBlock(node, crossCallIndexes))
+    .map((node) => emitBlock(node, crossCallIndexes, graph))
     .filter(Boolean)
     .join("\n\n")
 
-  const clients = emitCrossContractClients(executionOrder)
+  const clients = emitCrossContractClients(codegenNodes)
   const declarations = [blockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
     .filter(Boolean)
     .join("\n\n")
 
-  const getters = emitStorageGetters(executionOrder)
+  const getters = emitStorageGetters(codegenNodes)
 
   const source = `#![no_std]
 use soroban_sdk::{${imports.join(", ")}};
@@ -500,7 +550,7 @@ function generateMultiFunctionSource(graph: ContractGraph): CodegenResult {
     imports.sort()
   }
 
-  const functions = groups.map((group) => emitFunction(group)).join("\n\n")
+  const functions = groups.map((group) => emitFunction(graph, group)).join("\n\n")
 
   // Client traits and the error enum are module-level, so they are emitted once
   // for every cross-contract call and Condition block across all functions.
@@ -534,7 +584,7 @@ ${functions}
 }
 
 /** Renders one function group as a Rust method. */
-function emitFunction(group: FunctionGroup): string {
+function emitFunction(graph: ContractGraph, group: FunctionGroup): string {
   const params = functionSignature(group)
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
   const returnClause = group.returnType === "()" ? "" : ` -> ${group.returnType}`
@@ -545,8 +595,10 @@ function emitFunction(group: FunctionGroup): string {
     getCrossContractNodes(group.body).map((node, index) => [node.id, index])
   )
 
+  const loopBodyIds = collectAllLoopBodyIds(graph)
   const statements = group.body
-    .map((node) => emitBlock(node, crossCallIndexes))
+    .filter((node) => !loopBodyIds.has(node.id))
+    .map((node) => emitBlock(node, crossCallIndexes, graph))
     .filter(Boolean)
   if (group.returnValue !== null) {
     statements.push(`        ${group.returnValue}`)

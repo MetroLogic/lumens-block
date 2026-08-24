@@ -27,7 +27,7 @@ const SIMULATION_SOURCE = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCC
 
 // ─── Graph → Soroban argument conversion ─────────────────────────────────────
 
-type NodeType = "default" | "Auth" | "Transfer" | "Storage" | "Event" | "Condition"
+type NodeType = "default" | "Auth" | "Transfer" | "Storage" | "Event" | "Condition" | "Loop"
 
 /**
  * Derives the entry-point function name from the node graph topology.
