@@ -53,6 +53,7 @@ export const BLOCK_TYPES = [
   "CrossContractCall",
   "FunctionEntry",
   "FunctionReturn",
+  "Loop",
 ] as const
 
 export type BlockType = (typeof BLOCK_TYPES)[number]
@@ -141,6 +142,70 @@ export const FUNCTION_VISIBILITIES: FunctionVisibility[] = ["pub", "pub(crate)"]
 /** Maximum parameters a single FunctionEntry may declare. */
 export const MAX_FUNCTION_PARAMS = 10
 
+// ---------------------------------------------------------------------------
+// Loop block
+// ---------------------------------------------------------------------------
+
+/** Whether a Loop iterates a numeric range or a Vec input. */
+export const LOOP_MODES = ["range", "vec"] as const
+
+export type LoopMode = (typeof LOOP_MODES)[number]
+
+/** Inclusive compile-time iteration bounds enforced before codegen. */
+export const MIN_LOOP_ITERATIONS = 1
+export const MAX_LOOP_ITERATIONS = 1000
+
+/** Default iterator binding in emitted Rust (`let i = __i`). */
+export const DEFAULT_ITERATOR_VAR = "i"
+
+/** Named React Flow handles / compile ports for Loop nodes. */
+export const LOOP_ITEMS_HANDLE = "items"
+export const LOOP_BODY_HANDLE = "body"
+export const LOOP_RESULT_HANDLE = "result"
+
+/**
+ * Loop block ports.
+ *
+ * `items` and `body` are inputs; `result` is the accumulated `Vec<i128>`.
+ * Range mode still requires an `items` connection (typically from Start) so
+ * the loop is wired into the graph even though `start`/`end` come from params.
+ */
+export const LOOP_PORT_SCHEMA = {
+  inputs: {
+    items: {
+      type: "Vec<i128> | range",
+      description: "The collection or range to iterate over",
+    },
+    body: {
+      type: "subgraph",
+      description: "The block(s) to execute per iteration",
+    },
+  },
+  outputs: {
+    result: {
+      type: "Vec<i128>",
+      description: "Accumulated results from the loop body",
+    },
+  },
+} as const
+
+/** Config panel shape persisted on Loop nodes as `params.loop`. */
+export interface LoopConfig {
+  mode: LoopMode
+  maxIterations: number
+  iteratorVar: string
+}
+
+export const DEFAULT_LOOP_CONFIG: LoopConfig = {
+  mode: "range",
+  maxIterations: 100,
+  iteratorVar: DEFAULT_ITERATOR_VAR,
+}
+
+export function isLoopMode(value: unknown): value is LoopMode {
+  return typeof value === "string" && LOOP_MODES.includes(value as LoopMode)
+}
+
 /** Rust identifiers accepted for function and parameter names. */
 export const RUST_IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*$/
 
@@ -213,6 +278,11 @@ export interface BlockParameters {
    * `returnType` so the generated crate still compiles.
    */
   returnValue?: string
+  /**
+   * Loop block configuration: `{ mode, maxIterations, iteratorVar }`.
+   * `maxIterations` is a compile-time cap in `[1, 1000]`.
+   */
+  loop?: LoopConfig
 }
 
 export interface ContractGraphNode {

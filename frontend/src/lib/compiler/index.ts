@@ -18,20 +18,18 @@ import { findCycle, formatCycleMessage } from "../compile/cycle"
 import {
   collectFunctionGroups,
   hasFunctionEntries,
+  EXECUTABLE_TYPES,
   type FunctionGroup,
 } from "../compile/functions"
+import {
+  collectAllLoopBodyIds,
+  emitLoopRust,
+  getLoopBodyNodes,
+  graphHasRangeLoop,
+  graphHasVecLoop,
+} from "../compile/loop"
 
 export type { ContractGraph, ContractGraphNode, ContractGraphEdge } from "../compile/schema"
-
-const EXECUTABLE_TYPES = new Set<BlockType>([
-  "Auth",
-  "RBACCheck",
-  "Transfer",
-  "Storage",
-  "Event",
-  "Condition",
-  "CrossContractCall",
-])
 
 export interface CompileGraphOptions {
   /** Callback or array to collect warnings */
@@ -140,8 +138,22 @@ export function topologicalSort(
     }
   }
 
-  // Filter only executable block types
-  return sortedOrder.filter((n) => EXECUTABLE_TYPES.has(n.type))
+  // Filter executable blocks, excluding Loop body subgraphs (emitted inside the Loop).
+  const loopBodyIds = collectAllLoopBodyIds(graph)
+  return sortedOrder.filter((n) => EXECUTABLE_TYPES.has(n.type) && !loopBodyIds.has(n.id))
+}
+
+/** Main-order nodes plus every Loop body subgraph they contain (for params/imports). */
+function withLoopBodies(graph: ContractGraph, mainOrder: ContractGraphNode[]): ContractGraphNode[] {
+  const seen = new Set(mainOrder.map((n) => n.id))
+  const extra: ContractGraphNode[] = []
+  const bodyIds = collectAllLoopBodyIds(graph)
+  for (const node of graph.nodes) {
+    if (seen.has(node.id) || !bodyIds.has(node.id)) continue
+    extra.push(node)
+    seen.add(node.id)
+  }
+  return [...mainOrder, ...extra]
 }
 
 /**
@@ -158,26 +170,27 @@ export function compileGraph(graph: ContractGraph, options?: CompileGraphOptions
   }
 
   const executionOrder = topologicalSort(graph, options)
-  const blockTypes = new Set(executionOrder.map((n) => n.type))
+  const codegenNodes = withLoopBodies(graph, executionOrder)
+  const blockTypes = new Set(codegenNodes.map((n) => n.type))
 
-  const imports = deriveImports(blockTypes, executionOrder)
-  const params = deriveParams(blockTypes, executionOrder)
+  const imports = deriveImports(blockTypes, codegenNodes)
+  const params = deriveParams(blockTypes, codegenNodes)
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
 
   const crossCallIndexes = new Map(
-    getCrossContractNodes(executionOrder).map((node, index) => [node.id, index])
+    getCrossContractNodes(codegenNodes).map((node, index) => [node.id, index])
   )
   const body = executionOrder
-    .map((node) => emitNodeCode(node, crossCallIndexes))
+    .map((node) => emitNodeCode(node, crossCallIndexes, graph))
     .filter(Boolean)
     .join("\n\n")
 
-  const clients = emitCrossContractClients(executionOrder)
+  const clients = emitCrossContractClients(codegenNodes)
   const declarations = [blockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
     .filter(Boolean)
     .join("\n\n")
 
-  const getters = emitStorageGetters(executionOrder)
+  const getters = emitStorageGetters(codegenNodes)
 
   const getterBlock = getters ? `\n${getters}\n` : ""
   const lines = [
@@ -282,7 +295,7 @@ function compileFunctionGroups(graph: ContractGraph, options?: CompileGraphOptio
     imports.sort()
   }
 
-  const functions = groups.map(emitFunctionGroup).join("\n\n")
+  const functions = groups.map((group) => emitFunctionGroup(graph, group)).join("\n\n")
 
   const clients = emitCrossContractClients(allBodyNodes)
   const declarations = [allBlockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
@@ -303,7 +316,7 @@ ${functions}
 }
 
 /** Renders one resolved function group as a Rust method. */
-function emitFunctionGroup(group: FunctionGroup): string {
+function emitFunctionGroup(graph: ContractGraph, group: FunctionGroup): string {
   const params: Array<{ name: string; rustType: string }> = [{ name: "env", rustType: "Env" }]
   const seen = new Set<string>(["env"])
 
@@ -330,8 +343,10 @@ function emitFunctionGroup(group: FunctionGroup): string {
     getCrossContractNodes(group.body).map((node, index) => [node.id, index])
   )
 
+  const loopBodyIds = collectAllLoopBodyIds(graph)
   const statements = group.body
-    .map((node) => emitNodeCode(node, crossCallIndexes))
+    .filter((node) => !loopBodyIds.has(node.id))
+    .map((node) => emitNodeCode(node, crossCallIndexes, graph))
     .filter(Boolean)
   if (group.returnValue !== null) {
     statements.push(`        ${group.returnValue}`)
@@ -401,6 +416,15 @@ function deriveParams(
     params.push({ name: "event_name", rustType: "Symbol" })
   }
 
+  if (graphHasRangeLoop(nodes) || (blockTypes.has("Loop") && !graphHasVecLoop(nodes))) {
+    if (!params.some((p) => p.name === "start")) params.push({ name: "start", rustType: "i128" })
+    if (!params.some((p) => p.name === "end")) params.push({ name: "end", rustType: "i128" })
+  }
+
+  if (graphHasVecLoop(nodes)) {
+    if (!params.some((p) => p.name === "items")) params.push({ name: "items", rustType: "Vec<i128>" })
+  }
+
   // Arguments and target addresses required by CrossContractCall blocks.
   params.push(...crossContractParams(nodes, params.map((param) => param.name)))
 
@@ -431,6 +455,10 @@ function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = 
     imports.add("contracterror")
   }
 
+  if (blockTypes.has("Loop")) {
+    imports.add("Vec")
+  }
+
   for (const name of collectCrossContractImports(nodes)) {
     imports.add(name)
   }
@@ -438,7 +466,11 @@ function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = 
   return Array.from(imports).sort()
 }
 
-function emitNodeCode(node: ContractGraphNode, crossCallIndexes: Map<string, number>): string {
+function emitNodeCode(
+  node: ContractGraphNode,
+  crossCallIndexes: Map<string, number>,
+  graph: ContractGraph
+): string {
   const label = node.data.label.replace(/"/g, '\\"')
 
   switch (node.type) {
@@ -514,6 +546,15 @@ function emitNodeCode(node: ContractGraphNode, crossCallIndexes: Map<string, num
         return `        // Condition: ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
       }
       return `        // Condition: ${label}\n        if !release {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
+    }
+
+    case "Loop": {
+      const bodyNodes = getLoopBodyNodes(graph, node.id).nodes
+      const bodySource = bodyNodes
+        .map((bodyNode) => emitNodeCode(bodyNode, crossCallIndexes, graph))
+        .filter(Boolean)
+        .join("\n\n")
+      return emitLoopRust(node, bodySource)
     }
 
     default:

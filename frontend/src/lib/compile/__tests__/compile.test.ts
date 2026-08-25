@@ -658,3 +658,82 @@ describe("compileGraph — multi-function preview parity", () => {
     expect(() => compileGraph(graph)).toThrow(/deposit/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Loop block
+// ---------------------------------------------------------------------------
+
+function loopGraph(opts?: {
+  maxIterations?: number
+  mode?: "range" | "vec"
+  includeBody?: boolean
+  includeItems?: boolean
+}): ContractGraph {
+  const maxIterations = opts?.maxIterations
+  const mode = opts?.mode ?? "range"
+  const includeBody = opts?.includeBody ?? true
+  const includeItems = opts?.includeItems ?? true
+
+  const nodes: ContractGraph["nodes"] = [
+    { id: "1", type: "default", data: { label: "Start" } },
+    {
+      id: "2",
+      type: "Loop",
+      data: {
+        label: "Loop",
+        params: {
+          loop: {
+            mode,
+            maxIterations: maxIterations as number,
+            iteratorVar: "i",
+          },
+        },
+      },
+    },
+  ]
+  const edges: ContractGraph["edges"] = []
+
+  if (includeItems) {
+    edges.push({ id: "e-items", source: "1", target: "2", targetHandle: "items" })
+  }
+
+  if (includeBody) {
+    nodes.push({ id: "3", type: "Transfer", data: { label: "Pay" } })
+    edges.push({ id: "e-body", source: "2", target: "3", sourceHandle: "body" })
+  }
+
+  return { nodes, edges }
+}
+
+describe("Loop block", () => {
+  it("emits a bounded range for-loop with the .min() cap for a constant body", () => {
+    const { source, blockOrder } = generateContractSource(loopGraph({ maxIterations: 10 }))
+
+    expect(blockOrder).toContain("Loop:2")
+    expect(source).toContain("for __i in __start..__end")
+    expect(source).toContain("end.min(__start + 10)")
+    expect(source).toContain("// compile-time cap enforced")
+    expect(source).toContain("token::Client::new(&env, &token).transfer(&from, &to, &amount)")
+    expect(source).toContain("Vec<i128>")
+    expect(compileGraph(loopGraph({ maxIterations: 10 }))).toContain("for __i in")
+  })
+
+  it("returns a validation error when maxIterations is 0", () => {
+    const error = validateGraphStructure(loopGraph({ maxIterations: 0 }))
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe("INVALID_MAX_ITERATIONS")
+  })
+
+  it("returns a validation error when maxIterations is 1001", () => {
+    const error = validateGraphStructure(loopGraph({ maxIterations: 1001 }))
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe("INVALID_MAX_ITERATIONS")
+  })
+
+  it("returns a validation error when a Loop has no body connection", () => {
+    const error = validateGraphStructure(loopGraph({ maxIterations: 10, includeBody: false }))
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe("MISSING_LOOP_BODY")
+  })
+})
+

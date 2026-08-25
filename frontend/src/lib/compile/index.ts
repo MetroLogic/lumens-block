@@ -3,13 +3,18 @@ export {
   CROSS_CONTRACT_ARG_SOURCES,
   CROSS_CONTRACT_TYPES,
   FUNCTION_VISIBILITIES,
+  LOOP_MODES,
+  LOOP_PORT_SCHEMA,
   MAX_EDGES,
   MAX_FUNCTION_PARAMS,
   MAX_GRAPH_BYTES,
+  MAX_LOOP_ITERATIONS,
   MAX_NODES,
+  MIN_LOOP_ITERATIONS,
   isBlockType,
   isCrossContractArgSource,
   isCrossContractType,
+  isLoopMode,
 } from "./schema"
 export type {
   BlockParameters,
@@ -25,6 +30,8 @@ export type {
   ContractGraph,
   ContractGraphEdge,
   ContractGraphNode,
+  LoopConfig,
+  LoopMode,
 } from "./schema"
 
 export { generateContractSource, getExecutionOrder, GENERATED_CARGO_TOML } from "./codegen"
