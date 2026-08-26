@@ -38,6 +38,7 @@ import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
 import { useTheme } from "./ThemeContext"
+import NetworkSelector from "./NetworkSelector"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
@@ -376,14 +377,10 @@ export default function BlockEditor() {
   return (
     <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
       <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
-        <select
+        <NetworkSelector
           value={selectedNetwork}
-          onChange={(event) => setSelectedNetwork(event.target.value as StellarNetwork)}
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-        >
-          <option value="testnet">Testnet</option>
-          <option value="mainnet">Mainnet</option>
-        </select>
+          onChange={(net) => setSelectedNetwork(net)}
+        />
         <button
           onClick={() => void loadWalletInfo()}
           disabled={isWalletLoading}
