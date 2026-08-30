@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
+  GRAPH_AUTOSAVE_DEBOUNCE_MS,
+  GRAPH_STORAGE_KEY,
+  clearGraphStorage,
+  loadGraphFromStorage,
   parseImportedGraphJson,
+  saveGraphToStorage,
   toContractGraph,
   toReactFlowGraph,
 } from "@/lib/editor/graphPersistence"
@@ -86,5 +91,87 @@ describe("validateContractGraph position + skipStructureValidation", () => {
       { skipStructureValidation: true }
     )
     expect(result.ok).toBe(true)
+  })
+})
+
+/** Minimal in-memory localStorage stand-in used to exercise persistence under node. */
+function createFakeStorage() {
+  const store = new Map<string, string>()
+  return {
+    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key: string, value: string) => {
+      store.set(key, String(value))
+    },
+    removeItem: (key: string) => {
+      store.delete(key)
+    },
+    clear: () => store.clear(),
+    store,
+  }
+}
+
+let originalWindow: typeof globalThis.window | undefined
+let fakeStorage: ReturnType<typeof createFakeStorage>
+
+beforeEach(() => {
+  originalWindow = (globalThis as { window?: unknown }).window as typeof globalThis.window | undefined
+  fakeStorage = createFakeStorage()
+  ;(globalThis as Record<string, unknown>).window = { localStorage: fakeStorage }
+})
+
+afterEach(() => {
+  if (originalWindow === undefined) {
+    delete (globalThis as Record<string, unknown>).window
+  } else {
+    ;(globalThis as Record<string, unknown>).window = originalWindow
+  }
+})
+
+describe("localStorage persistence (issue #72 AC)", () => {
+  it("saves the graph as serialised JSON under the fixed key", () => {
+    saveGraphToStorage(transferGraph)
+    const raw = fakeStorage.store.get(GRAPH_STORAGE_KEY)
+    expect(raw).toBeDefined()
+    expect(JSON.parse(raw!)).toEqual(transferGraph)
+  })
+
+  it("round-trips a saved graph through loadGraphFromStorage", () => {
+    saveGraphToStorage(transferGraph)
+    const loaded = loadGraphFromStorage()
+    expect(loaded).not.toBeNull()
+    expect(loaded!.nodes.map((n) => n.id)).toEqual(transferGraph.nodes.map((n) => n.id))
+  })
+
+  it("uses a debounce delay matching the documented AC (~500ms)", () => {
+    expect(GRAPH_AUTOSAVE_DEBOUNCE_MS).toBe(500)
+  })
+
+  it("returns null when no graph is stored", () => {
+    expect(loadGraphFromStorage()).toBeNull()
+  })
+
+  it("returns null for invalid JSON (falls back to default Start node)", () => {
+    fakeStorage.store.set(GRAPH_STORAGE_KEY, "{not-valid-json")
+    expect(loadGraphFromStorage()).toBeNull()
+  })
+
+  it("returns null for a stored value that fails graph validation", () => {
+    fakeStorage.store.set(GRAPH_STORAGE_KEY, JSON.stringify({ nodes: "nope", edges: [] }))
+    expect(loadGraphFromStorage()).toBeNull()
+  })
+
+  it("clearGraphStorage removes the persisted entry", () => {
+    saveGraphToStorage(transferGraph)
+    expect(fakeStorage.store.has(GRAPH_STORAGE_KEY)).toBe(true)
+    clearGraphStorage()
+    expect(fakeStorage.store.has(GRAPH_STORAGE_KEY)).toBe(false)
+    expect(loadGraphFromStorage()).toBeNull()
+  })
+
+  it("is a no-op when window is unavailable (SSR safety)", () => {
+    delete (globalThis as Record<string, unknown>).window
+    expect(() => saveGraphToStorage(transferGraph)).not.toThrow()
+    expect(() => clearGraphStorage()).not.toThrow()
+    expect(loadGraphFromStorage()).toBeNull()
   })
 })

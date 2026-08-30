@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, FilePlus2, FolderOpen, Moon, Repeat, Sun, Upload } from "lucide-react"
+import { Download, FilePlus2, FolderOpen, Moon, Repeat, Sun, Trash2, Upload } from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
@@ -31,6 +31,7 @@ interface Props {
   onAddBlock?: (type: string) => void
   onAutoLayout?: () => void
   onNew?: () => void
+  onClearCanvas?: () => void
   onExport?: () => void
   onImport?: (file: File) => void
 }
@@ -41,6 +42,7 @@ export default function Toolbar({
   onAddBlock,
   onAutoLayout,
   onNew,
+  onClearCanvas,
   onExport,
   onImport,
 }: Props) {
@@ -138,7 +140,7 @@ export default function Toolbar({
             Auto Layout
           </button>
         )}
-        {(onNew || onExport || onImport) && (
+        {(onNew || onClearCanvas || onExport || onImport) && (
           <div className="flex flex-col gap-1.5">
             {onNew && (
               <button
@@ -147,6 +149,16 @@ export default function Toolbar({
               >
                 <FilePlus2 size={14} />
                 New
+              </button>
+            )}
+            {onClearCanvas && (
+              <button
+                onClick={onClearCanvas}
+                title="Remove saved graph and reset the canvas"
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+              >
+                <Trash2 size={14} />
+                Clear
               </button>
             )}
             {onExport && (
