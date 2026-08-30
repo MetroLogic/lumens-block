@@ -855,7 +855,16 @@ async fn test_compile_cleanup_on_failure() {
 
     assert_ne!(response.status(), StatusCode::OK);
 
-    let after = count_jobs();
+    // The cleanup runs synchronously inside the handler, but under heavy
+    // CI load (slow disk, cargo lock contention) the remove_dir_all may
+    // lag behind the response. Poll with a short deadline so the test
+    // does not flake on timing.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut after = count_jobs();
+    while after != before && std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        after = count_jobs();
+    }
 
     assert_eq!(
         before, after,
