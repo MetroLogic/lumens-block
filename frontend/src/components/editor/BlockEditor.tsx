@@ -181,6 +181,19 @@ export default function BlockEditor() {
     saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
   }, [setNodes, setEdges])
 
+  const handleClearCanvas = useCallback(() => {
+    const confirmed = window.confirm(
+      "Clear the saved graph from this browser and reset the canvas?"
+    )
+    if (!confirmed) return
+
+    clearGraphStorage()
+    setNodes([])
+    setEdges([])
+    setTestResults(null)
+    setOverrideTestFailure(false)
+  }, [setNodes, setEdges])
+
   const handleExport = useCallback(() => {
     downloadGraphJson(toContractGraph(nodes, edges))
   }, [nodes, edges])
@@ -404,6 +417,7 @@ export default function BlockEditor() {
         onAddBlock={onAddBlock}
         onAutoLayout={handleAutoLayout}
         onNew={handleNew}
+        onClearCanvas={handleClearCanvas}
         onExport={handleExport}
         onImport={(file) => void handleImport(file)}
       />
