@@ -8,3 +8,4 @@ contracts/target
 backend/target
 playwright-report/
 test-results/
+config.bat
