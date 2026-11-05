@@ -39,6 +39,7 @@ import TemplatesModal from "./TemplatesModal"
 import CodePreviewModal from "./CodePreviewModal"
 import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
+import { validateGraph } from "@/lib/validation/validateGraph"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
 import { DEFAULT_LOOP_CONFIG } from "@/lib/compile/schema"
@@ -268,7 +269,19 @@ export default function BlockEditor() {
     }, 300)
   }, [edges, setNodes])
 
+  const graphValidation = useMemo(() => validateGraph({ nodes, edges }), [nodes, edges])
+  const nodesWithValidation = useMemo(() =>
+    nodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        validationErrors: graphValidation.issuesByNodeId[node.id]?.map((issue) => issue.message) ?? [],
+      },
+    })),
+    [graphValidation.issuesByNodeId, nodes]
+  )
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
+  const validationBlockingDeploy = !graphValidation.valid
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -428,6 +441,8 @@ export default function BlockEditor() {
 
       <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
+          nodes={nodesWithValidation}
+          edges={edges}
           nodes={styledNodes}
           edges={styledEdges}
           onNodesChange={onNodesChange}
@@ -457,6 +472,16 @@ export default function BlockEditor() {
       </div>
 
       <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
+        {validationBlockingDeploy && (
+          <div className="max-h-44 overflow-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow">
+            <p className="font-semibold">Graph validation failed</p>
+            <ul className="mt-1 list-disc space-y-1 pl-4">
+              {graphValidation.issues.slice(0, 5).map((issue) => (
+                <li key={`${issue.code}-${issue.nodeId ?? "graph"}-${issue.message}`}>{issue.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {testsBlockingDeploy && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow">
             <p className="font-semibold">Tests failed — deployment blocked</p>
@@ -514,6 +539,7 @@ export default function BlockEditor() {
             selectedNetwork={selectedNetwork}
             walletAddress={walletAddress}
             walletBalance={walletBalance}
+            disabled={testsBlockingDeploy || validationBlockingDeploy}
             disabled={testsBlockingDeploy || typeErrors.length > 0}
             onDeploySuccess={(id) => setDeployedContractId(id)}
           />

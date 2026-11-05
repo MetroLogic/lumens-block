@@ -36,6 +36,15 @@ import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
 
 interface NodeData {
   label: string
+  params?: {
+    condition?: string
+    conditionExpression?: ConditionExpression
+    storageKey?: string
+    token?: string
+    asset?: TransferAsset
+    eventName?: string
+  }
+  validationErrors?: string[]
   params?: BlockParameters
   /** Set by BlockEditor when this node participates in a control-flow cycle. */
   hasCycleError?: boolean
@@ -67,6 +76,8 @@ function assetBadgeLabel(asset: TransferAsset | undefined): string | null {
 
 export default function BlockNode({ id, type, data, selected }: BlockNodeProps) {
   const { setNodes } = useReactFlow()
+  const validationErrors = data.validationErrors ?? []
+  const hasValidationErrors = validationErrors.length > 0
   const allNodes = useNodes()
 
   // Return values bound by CrossContractCall blocks are referenceable as
@@ -245,6 +256,7 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
       data-error={data.hasCycleError ? "cycle" : undefined}
       className={`relative rounded-xl border-2 shadow-sm font-sans min-w-[180px] ${
         selected ? "ring-2 ring-blue-500 ring-offset-1" : ""
+      } ${hasValidationErrors ? "!border-red-500 ring-2 ring-red-400" : ""} ${colorClasses}`}
       } ${
         data.hasCycleError
           ? "border-red-500 ring-2 ring-red-500 bg-red-50 text-red-900 dark:border-red-500 dark:ring-red-500 dark:bg-red-950/50 dark:text-red-200"
@@ -292,6 +304,9 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
           </span>
         </div>
         <div className="text-sm font-semibold mt-1">{data.label}</div>
+        {hasValidationErrors && (
+          <span className="mt-1 rounded bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title={validationErrors.join("\n")}>Invalid</span>
+        )}
         {transferBadge && (
           <span
             className={`mt-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${badgeColor}`}
