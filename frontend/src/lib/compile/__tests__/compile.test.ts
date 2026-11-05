@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import { generateContractSource, getExecutionOrder } from "@/lib/compile/codegen"
 import type { ContractGraph } from "@/lib/compile/schema"
 import { validateContractGraph, validateGraphStructure } from "@/lib/compile/validate"
+import { compileGraph } from "@/lib/compiler"
 import tokenTransfer from "@/lib/templates/token-transfer.json"
 
 const transferGraph = tokenTransfer as ContractGraph
@@ -79,6 +80,103 @@ describe("validateGraphStructure", () => {
   })
 })
 
+describe("validateGraphStructure — cycle detection", () => {
+  it("does not report a cycle for a linear graph A → B → C", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "A", type: "default", data: { label: "Start" } },
+        { id: "B", type: "Auth", data: { label: "Auth" } },
+        { id: "C", type: "Transfer", data: { label: "Transfer" } },
+      ],
+      edges: [
+        { id: "e1", source: "A", target: "B" },
+        { id: "e2", source: "B", target: "C" },
+      ],
+    })
+    expect(error?.type).not.toBe("cycle")
+    expect(error?.code).not.toBe("CYCLE_DETECTED")
+    expect(error).toBeNull()
+  })
+
+  it("detects a self-loop A → A and nodeIds contains A", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "A", type: "Auth", data: { label: "Auth" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "A" },
+        { id: "e2", source: "A", target: "A" },
+      ],
+    })
+    expect(error?.type).toBe("cycle")
+    expect(error?.code).toBe("CYCLE_DETECTED")
+    expect(error?.nodeIds).toContain("A")
+    expect(new Set(error?.nodeIds)).toEqual(new Set(["A"]))
+    expect(error?.message).toMatch(/Cycle detected/)
+  })
+
+  it("detects a two-node cycle A → B → A", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "A", type: "Auth", data: { label: "Auth" } },
+        { id: "B", type: "Transfer", data: { label: "Transfer" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "A" },
+        { id: "e2", source: "A", target: "B" },
+        { id: "e3", source: "B", target: "A" },
+      ],
+    })
+    expect(error?.type).toBe("cycle")
+    expect(error?.code).toBe("CYCLE_DETECTED")
+    expect(error?.nodeIds).toEqual(expect.arrayContaining(["A", "B"]))
+    expect(error?.nodeIds?.[0]).toBe(error?.nodeIds?.[error.nodeIds.length - 1])
+    expect(new Set(error?.nodeIds)).toEqual(new Set(["A", "B"]))
+    expect(error?.message).toMatch(/Cycle detected: Auth → Transfer → Auth/)
+  })
+
+  it("detects a longer cycle A → B → C → D → B and returns only cycle participants", () => {
+    const error = validateGraphStructure({
+      nodes: [
+        { id: "A", type: "default", data: { label: "Start" } },
+        { id: "B", type: "Auth", data: { label: "Auth" } },
+        { id: "C", type: "Transfer", data: { label: "Transfer" } },
+        { id: "D", type: "Event", data: { label: "Event" } },
+      ],
+      edges: [
+        { id: "e1", source: "A", target: "B" },
+        { id: "e2", source: "B", target: "C" },
+        { id: "e3", source: "C", target: "D" },
+        { id: "e4", source: "D", target: "B" },
+      ],
+    })
+    expect(error?.type).toBe("cycle")
+    expect(error?.code).toBe("CYCLE_DETECTED")
+    expect(error?.nodeIds).toEqual(["B", "C", "D", "B"])
+    expect(error?.nodeIds).not.toContain("A")
+    expect(new Set(error?.nodeIds)).toEqual(new Set(["B", "C", "D"]))
+    expect(error?.message).toMatch(/Cycle detected: Auth → Transfer → Event → Auth/)
+  })
+
+  it("blocks generateContractSource from running on a cyclic graph", () => {
+    const cyclic: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        { id: "A", type: "Auth", data: { label: "Auth" } },
+        { id: "B", type: "Transfer", data: { label: "Transfer" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "A" },
+        { id: "e2", source: "A", target: "B" },
+        { id: "e3", source: "B", target: "A" },
+      ],
+    }
+    expect(() => generateContractSource(cyclic)).toThrow(/Cycle detected/)
+  })
+})
+
 describe("generateContractSource", () => {
   it("generates Rust with Transfer logic for token-transfer template", () => {
     const { source, blockOrder } = generateContractSource(transferGraph)
@@ -113,3 +211,529 @@ describe("generateContractSource", () => {
     expect(source).toContain("token::Client::new(&env, &token).transfer")
   })
 })
+
+// ---------------------------------------------------------------------------
+// CrossContractCall block
+// ---------------------------------------------------------------------------
+
+const CONTRACT_ID = "CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+
+function crossCallGraph(params: Record<string, unknown>, extraNodes: ContractGraph["nodes"] = [], extraEdges: ContractGraph["edges"] = []): ContractGraph {
+  return {
+    nodes: [
+      { id: "1", type: "default", data: { label: "Start" } },
+      { id: "2", type: "CrossContractCall", data: { label: "Stake Pool", params } },
+      ...extraNodes,
+    ],
+    edges: [{ id: "e1", source: "1", target: "2" }, ...extraEdges],
+  }
+}
+
+const stakeParams = {
+  targetContractId: CONTRACT_ID,
+  targetFunction: "stake",
+  targetArgs: [
+    { name: "caller", value: "caller", rustType: "Address", source: "invocationArg" },
+    { name: "amount", value: "amount", rustType: "i128", source: "invocationArg" },
+  ],
+  returnBinding: "stake_result",
+  returnType: "i128",
+}
+
+describe("validateGraphStructure — CrossContractCall", () => {
+  it("accepts a fully configured cross-contract call", () => {
+    expect(validateGraphStructure(crossCallGraph(stakeParams))).toBeNull()
+  })
+
+  it("rejects a call without a target contract address", () => {
+    const error = validateGraphStructure(crossCallGraph({ ...stakeParams, targetContractId: "" }))
+    expect(error?.code).toBe("MISSING_TARGET_CONTRACT")
+  })
+
+  it("rejects a call without a target function", () => {
+    const error = validateGraphStructure(crossCallGraph({ ...stakeParams, targetFunction: "   " }))
+    expect(error?.code).toBe("MISSING_TARGET_FUNCTION")
+  })
+
+  it("rejects arguments with an unsupported Rust type", () => {
+    const error = validateGraphStructure(
+      crossCallGraph({
+        ...stakeParams,
+        targetArgs: [{ name: "amount", value: "1", rustType: "u256", source: "literal" }],
+      })
+    )
+    expect(error?.code).toBe("INVALID_ARG_TYPE")
+  })
+
+  it("rejects an unsupported return type", () => {
+    const error = validateGraphStructure(crossCallGraph({ ...stakeParams, returnType: "Vec" }))
+    expect(error?.code).toBe("INVALID_RETURN_TYPE")
+  })
+
+  it("treats a CrossContractCall as an executable block", () => {
+    const result = validateContractGraph(crossCallGraph(stakeParams))
+    expect(result.ok).toBe(true)
+  })
+})
+
+describe("generateContractSource — CrossContractCall", () => {
+  it("emits a soroban_sdk client and invokes the target function", () => {
+    const { source } = generateContractSource(crossCallGraph(stakeParams))
+
+    expect(source).toContain('#[soroban_sdk::contractclient(name = "CrossContract1Client")]')
+    expect(source).toContain(`// Target contract: ${CONTRACT_ID}`)
+    expect(source).toContain("fn stake(env: Env, caller: Address, amount: i128) -> i128;")
+    expect(source).toContain(
+      "let stake_result: i128 = CrossContract1Client::new(&env, &target_contract).stake(&caller, &amount);"
+    )
+    expect(source).toContain("target_contract: Address")
+  })
+
+  it("emits literal, storage-key and invocation-argument operands", () => {
+    const { source } = generateContractSource(
+      crossCallGraph({
+        targetContractId: CONTRACT_ID,
+        targetFunction: "notify",
+        targetArgs: [
+          { name: "who", value: CONTRACT_ID, rustType: "Address", source: "literal" },
+          { name: "tag", value: "staked", rustType: "Symbol", source: "literal" },
+          { name: "amount", value: "150", rustType: "i128", source: "literal" },
+          { name: "open", value: "open", rustType: "bool", source: "storageKey" },
+          { name: "caller", value: "caller", rustType: "Address", source: "invocationArg" },
+        ],
+      })
+    )
+
+    expect(source).toContain(`Address::from_string(&String::from_str(&env, "${CONTRACT_ID}"))`)
+    expect(source).toContain('symbol_short!("staked")')
+    expect(source).toContain("&150")
+    expect(source).toContain(
+      'env.storage().instance().get::<_, bool>(&symbol_short!("open")).unwrap_or(false)'
+    )
+    expect(source).toContain("&caller")
+  })
+
+  it("emits a bare statement when no return value is bound", () => {
+    const { source } = generateContractSource(
+      crossCallGraph({
+        targetContractId: CONTRACT_ID,
+        targetFunction: "ping",
+        targetArgs: [],
+      })
+    )
+
+    expect(source).toContain("CrossContract1Client::new(&env, &target_contract).ping();")
+    expect(source).toContain("fn ping(env: Env);")
+    expect(source).not.toContain("let call_result")
+  })
+
+  it("numbers clients and target parameters when several calls are present", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "1", type: "default", data: { label: "Start" } },
+        {
+          id: "2",
+          type: "CrossContractCall",
+          data: {
+            label: "Stake",
+            params: { targetContractId: CONTRACT_ID, targetFunction: "stake", targetArgs: [] },
+          },
+        },
+        {
+          id: "3",
+          type: "CrossContractCall",
+          data: {
+            label: "Claim",
+            params: { targetContractId: CONTRACT_ID, targetFunction: "claim", targetArgs: [] },
+          },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "1", target: "2" },
+        { id: "e2", source: "2", target: "3" },
+      ],
+    }
+
+    const { source } = generateContractSource(graph)
+
+    expect(source).toContain("CrossContract1Client::new(&env, &target_contract).stake();")
+    expect(source).toContain("CrossContract2Client::new(&env, &target_contract_2).claim();")
+    expect(source).toContain("target_contract: Address, target_contract_2: Address")
+  })
+
+  it("lets a downstream Condition block gate on the bound return value", () => {
+    const graph = crossCallGraph(
+      stakeParams,
+      [
+        {
+          id: "3",
+          type: "Condition",
+          data: {
+            label: "Staked something",
+            params: {
+              conditionExpression: {
+                left: { type: "invocationArg", value: "stake_result" },
+                operator: ">",
+                right: { type: "constant", value: "0", constantKind: "number" },
+              },
+            },
+          },
+        },
+      ],
+      [{ id: "e2", source: "2", target: "3" }]
+    )
+
+    const { source } = generateContractSource(graph)
+
+    expect(source).toContain("let stake_result: i128 =")
+    expect(source).toContain("if !(stake_result > 0)")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Multi-function graphs (FunctionEntry / FunctionReturn)
+// ---------------------------------------------------------------------------
+
+function entryNode(
+  id: string,
+  functionName: string,
+  extra: Record<string, unknown> = {}
+): ContractGraph["nodes"][number] {
+  return {
+    id,
+    type: "FunctionEntry",
+    data: { label: functionName, params: { functionName, ...extra } },
+  }
+}
+
+function returnNode(
+  id: string,
+  params: Record<string, unknown> = {}
+): ContractGraph["nodes"][number] {
+  return { id, type: "FunctionReturn", data: { label: "Return", params } }
+}
+
+/** deposit(env, amount: i128) -> i128 and withdraw(env, amount: i128) -> bool. */
+function twoFunctionGraph(): ContractGraph {
+  return {
+    nodes: [
+      entryNode("fe1", "deposit", { functionParams: [{ name: "amount", rustType: "i128" }] }),
+      returnNode("fr1", { returnType: "i128", returnValue: "amount" }),
+      entryNode("fe2", "withdraw", { functionParams: [{ name: "amount", rustType: "i128" }] }),
+      returnNode("fr2", { returnType: "bool", returnValue: "true" }),
+    ],
+    edges: [
+      { id: "e1", source: "fe1", target: "fr1" },
+      { id: "e2", source: "fe2", target: "fr2" },
+    ],
+  }
+}
+
+describe("generateContractSource — multi-function graphs", () => {
+  it("emits one named function for a single FunctionEntry, not execute()", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        entryNode("fe1", "get_balance"),
+        returnNode("fr1", { returnType: "i128", returnValue: "0" }),
+      ],
+      edges: [{ id: "e1", source: "fe1", target: "fr1" }],
+    }
+
+    const { source } = generateContractSource(graph)
+
+    expect(source).toContain("pub fn get_balance(env: Env) -> i128")
+    expect(source).not.toContain("pub fn execute")
+  })
+
+  it("emits two separate pub fn blocks inside the same impl", () => {
+    const { source } = generateContractSource(twoFunctionGraph())
+
+    expect(source).toContain("pub fn deposit(env: Env, amount: i128) -> i128")
+    expect(source).toContain("pub fn withdraw(env: Env, amount: i128) -> bool")
+    // Both live in one #[contractimpl] impl block.
+    expect(source.match(/#\[contractimpl\]/g)).toHaveLength(1)
+    expect(source.match(/impl LumensBlockGenerated \{/g)).toHaveLength(1)
+    // Return expressions come from the FunctionReturn config.
+    expect(source).toContain("amount\n    }")
+    expect(source).toContain("true\n    }")
+  })
+
+  it("returns a validation error for duplicate function names", () => {
+    const graph = twoFunctionGraph()
+    graph.nodes[2] = entryNode("fe2", "deposit")
+
+    expect(() => generateContractSource(graph)).toThrow(/deposit/)
+    expect(validateGraphStructure(graph)?.code).toBe("DUPLICATE_FUNCTION_NAME")
+  })
+
+  it("returns a validation error for a FunctionEntry with no FunctionReturn", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        entryNode("fe1", "deposit"),
+        { id: "a1", type: "Auth", data: { label: "Auth" } },
+      ],
+      edges: [{ id: "e1", source: "fe1", target: "a1" }],
+    }
+
+    expect(validateGraphStructure(graph)?.code).toBe("MISSING_FUNCTION_RETURN")
+    expect(() => generateContractSource(graph)).toThrow(/FunctionReturn/)
+  })
+
+  it("falls back to a single execute() when no FunctionEntry is present", () => {
+    const { source } = generateContractSource(transferGraph)
+
+    expect(source).toContain("pub fn execute")
+    expect(source).not.toContain("FunctionEntry")
+  })
+
+  it("rejects function names that are not valid Rust identifiers", () => {
+    const graph: ContractGraph = {
+      nodes: [entryNode("fe1", "Deposit Funds"), returnNode("fr1")],
+      edges: [{ id: "e1", source: "fe1", target: "fr1" }],
+    }
+
+    expect(validateGraphStructure(graph)?.code).toBe("INVALID_FUNCTION_NAME")
+  })
+
+  it("rejects parameter types containing statement characters", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        entryNode("fe1", "deposit", {
+          functionParams: [{ name: "amount", rustType: "i128) { panic!();" }],
+        }),
+        returnNode("fr1"),
+      ],
+      edges: [{ id: "e1", source: "fe1", target: "fr1" }],
+    }
+
+    expect(validateGraphStructure(graph)?.code).toBe("INVALID_PARAM_TYPE")
+  })
+
+  it("rejects more than ten declared parameters", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        entryNode("fe1", "wide", {
+          functionParams: Array.from({ length: 11 }, (_, i) => ({
+            name: `p${i}`,
+            rustType: "i128",
+          })),
+        }),
+        returnNode("fr1"),
+      ],
+      edges: [{ id: "e1", source: "fe1", target: "fr1" }],
+    }
+
+    expect(validateGraphStructure(graph)?.code).toBe("TOO_MANY_FUNCTION_PARAMS")
+  })
+
+  it("rejects a block shared between two function subgraphs", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        entryNode("fe1", "deposit"),
+        entryNode("fe2", "withdraw"),
+        { id: "a1", type: "Auth", data: { label: "Shared Auth" } },
+        returnNode("fr1"),
+      ],
+      edges: [
+        { id: "e1", source: "fe1", target: "a1" },
+        { id: "e2", source: "fe2", target: "a1" },
+        { id: "e3", source: "a1", target: "fr1" },
+      ],
+    }
+
+    const error = validateGraphStructure(graph)
+    expect(["SHARED_FUNCTION_BLOCK", "SHARED_FUNCTION_RETURN"]).toContain(error?.code)
+  })
+
+  it("rejects a FunctionReturn unreachable from any FunctionEntry", () => {
+    const graph = twoFunctionGraph()
+    graph.nodes.push(returnNode("fr3", { returnType: "()" }))
+
+    expect(validateGraphStructure(graph)?.code).toBe("ORPHAN_FUNCTION_RETURN")
+  })
+
+  it("scopes each function body to its own subgraph", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        entryNode("fe1", "deposit"),
+        { id: "a1", type: "Auth", data: { label: "Require caller" } },
+        returnNode("fr1", { returnType: "()" }),
+        entryNode("fe2", "read_only"),
+        returnNode("fr2", { returnType: "u32", returnValue: "1" }),
+      ],
+      edges: [
+        { id: "e1", source: "fe1", target: "a1" },
+        { id: "e2", source: "a1", target: "fr1" },
+        { id: "e3", source: "fe2", target: "fr2" },
+      ],
+    }
+
+    const { source } = generateContractSource(graph)
+    const deposit = source.slice(source.indexOf("pub fn deposit"), source.indexOf("pub fn read_only"))
+    const readOnly = source.slice(source.indexOf("pub fn read_only"))
+
+    // The Auth block belongs to deposit only, and drags `caller` into its
+    // signature without touching the other function.
+    expect(deposit).toContain("caller.require_auth()")
+    expect(deposit).toContain("caller: Address")
+    expect(readOnly).not.toContain("caller.require_auth()")
+    expect(readOnly).not.toContain("caller: Address")
+  })
+})
+
+describe("generateContractSource & validateGraphStructure — RBACCheck", () => {
+  it("triggers validation error when rbacRole is custom and rbacCustomRole is empty", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac1",
+          type: "RBACCheck",
+          data: { label: "Custom RBAC", params: { rbacRole: "custom", rbacCustomRole: "   " } },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "rbac1" }],
+    }
+    const err = validateGraphStructure(graph)
+    expect(err?.code).toBe("INCOMPLETE_BLOCK")
+    expect(err?.message).toContain("custom role selected but role name is empty")
+
+    expect(() => generateContractSource(graph)).toThrow("custom role selected but role name is empty")
+  })
+
+  it("emits correct source for all rbacAction variants in generateContractSource", () => {
+    const graph: ContractGraph = {
+      nodes: [
+        { id: "start", type: "default", data: { label: "Start" } },
+        {
+          id: "rbac_req",
+          type: "RBACCheck",
+          data: { label: "Require Admin", params: { rbacRole: "admin", rbacAction: "require" } },
+        },
+        {
+          id: "rbac_grant",
+          type: "RBACCheck",
+          data: { label: "Grant Minter", params: { rbacRole: "minter", rbacAction: "grant" } },
+        },
+        {
+          id: "rbac_revoke",
+          type: "RBACCheck",
+          data: { label: "Revoke Pauser", params: { rbacRole: "pauser", rbacAction: "revoke" } },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "rbac_req" },
+        { id: "e2", source: "rbac_req", target: "rbac_grant" },
+        { id: "e3", source: "rbac_grant", target: "rbac_revoke" },
+      ],
+    }
+    const { source } = generateContractSource(graph)
+    expect(source).toContain("pub fn execute(env: Env, to: Address)")
+    expect(source).toContain("use soroban_sdk::{Address, Env, Symbol, contract, contractimpl, panic_with_error, symbol_short};")
+    expect(source).toContain('let admin: Address = env.storage().instance()')
+    expect(source).toContain('.get(&symbol_short!("admin"))')
+    expect(source).toContain('.unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_admin")));')
+    expect(source).toContain('env.storage().instance().set(&symbol_short!("minter"), &to);')
+    expect(source).toContain('env.storage().instance().remove(&symbol_short!("pauser"));')
+  })
+})
+
+describe("compileGraph — multi-function preview parity", () => {
+  it("previews both functions from the same graph the compiler sees", () => {
+    const preview = compileGraph(twoFunctionGraph())
+
+    expect(preview).toContain("pub fn deposit")
+    expect(preview).toContain("pub fn withdraw")
+    expect(preview.match(/#\[contractimpl\]/g)).toHaveLength(1)
+  })
+
+  it("still emits execute() for graphs without FunctionEntry blocks", () => {
+    expect(compileGraph(transferGraph)).toContain("pub fn execute")
+  })
+
+  it("surfaces the same validation errors as the compile path", () => {
+    const graph = twoFunctionGraph()
+    graph.nodes[2] = entryNode("fe2", "deposit")
+
+    expect(() => compileGraph(graph)).toThrow(/deposit/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Loop block
+// ---------------------------------------------------------------------------
+
+function loopGraph(opts?: {
+  maxIterations?: number
+  mode?: "range" | "vec"
+  includeBody?: boolean
+  includeItems?: boolean
+}): ContractGraph {
+  const maxIterations = opts?.maxIterations
+  const mode = opts?.mode ?? "range"
+  const includeBody = opts?.includeBody ?? true
+  const includeItems = opts?.includeItems ?? true
+
+  const nodes: ContractGraph["nodes"] = [
+    { id: "1", type: "default", data: { label: "Start" } },
+    {
+      id: "2",
+      type: "Loop",
+      data: {
+        label: "Loop",
+        params: {
+          loop: {
+            mode,
+            maxIterations: maxIterations as number,
+            iteratorVar: "i",
+          },
+        },
+      },
+    },
+  ]
+  const edges: ContractGraph["edges"] = []
+
+  if (includeItems) {
+    edges.push({ id: "e-items", source: "1", target: "2", targetHandle: "items" })
+  }
+
+  if (includeBody) {
+    nodes.push({ id: "3", type: "Transfer", data: { label: "Pay" } })
+    edges.push({ id: "e-body", source: "2", target: "3", sourceHandle: "body" })
+  }
+
+  return { nodes, edges }
+}
+
+describe("Loop block", () => {
+  it("emits a bounded range for-loop with the .min() cap for a constant body", () => {
+    const { source, blockOrder } = generateContractSource(loopGraph({ maxIterations: 10 }))
+
+    expect(blockOrder).toContain("Loop:2")
+    expect(source).toContain("for __i in __start..__end")
+    expect(source).toContain("end.min(__start + 10)")
+    expect(source).toContain("// compile-time cap enforced")
+    expect(source).toContain("token::Client::new(&env, &token).transfer(&from, &to, &amount)")
+    expect(source).toContain("Vec<i128>")
+    expect(compileGraph(loopGraph({ maxIterations: 10 }))).toContain("for __i in")
+  })
+
+  it("returns a validation error when maxIterations is 0", () => {
+    const error = validateGraphStructure(loopGraph({ maxIterations: 0 }))
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe("INVALID_MAX_ITERATIONS")
+  })
+
+  it("returns a validation error when maxIterations is 1001", () => {
+    const error = validateGraphStructure(loopGraph({ maxIterations: 1001 }))
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe("INVALID_MAX_ITERATIONS")
+  })
+
+  it("returns a validation error when a Loop has no body connection", () => {
+    const error = validateGraphStructure(loopGraph({ maxIterations: 10, includeBody: false }))
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe("MISSING_LOOP_BODY")
+  })
+})
+

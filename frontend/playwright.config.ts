@@ -1,9 +1,10 @@
 import { defineConfig, devices } from "@playwright/test"
 
+const PORT = Number(process.env.PORT || 3005)
+
 /**
  * Playwright E2E configuration.
- * Tests run against the local Next.js dev server (port 3000).
- * The server is started automatically before the test run and stopped after.
+ * Tests run against the local Next.js dev server.
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -17,7 +18,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: `http://localhost:${PORT}`,
     /* Collect trace on first retry */
     trace: "on-first-retry",
     /* Headless in CI, headed locally when PWDEBUG=1 */
@@ -26,14 +27,20 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      // Playwright's bundled Chromium 127 (build 1124) is a 212KB stub in this
+      // environment and fails to spawn on macOS 27 (`Unknown system error -88`).
+      // Locally use the installed Google Chrome; CI still uses bundled Chromium.
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(process.env.CI ? {} : { channel: "chrome" }),
+      },
     },
   ],
   /* Auto-start the Next.js dev server */
   webServer: {
-    command: "npm run dev",
-    port: 3000,
-    reuseExistingServer: !process.env.CI,
+    command: `npm run dev -- -p ${PORT}`,
+    port: PORT,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 })

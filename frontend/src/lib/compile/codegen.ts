@@ -1,4 +1,24 @@
-import { BlockType, ContractGraph, ContractGraphNode, ConditionExpression, Operand } from "./schema"
+import { BlockType, ContractGraph, ContractGraphNode, ConditionExpression, Operand, StorageScope } from "./schema"
+import {
+  collectCrossContractImports,
+  crossContractParams,
+  emitCrossContractCall,
+  emitCrossContractClients,
+  getCrossContractNodes,
+} from "./crossContract"
+import {
+  EXECUTABLE_TYPES,
+  collectFunctionGroups,
+  hasFunctionEntries,
+  type FunctionGroup,
+} from "./functions"
+import {
+  collectAllLoopBodyIds,
+  emitLoopRust,
+  getLoopBodyNodes,
+  graphHasRangeLoop,
+  graphHasVecLoop,
+} from "./loop"
 import { validateGraphStructure } from "./validate"
 
 export interface CodegenResult {
@@ -12,19 +32,27 @@ export interface FunctionParam {
   rustType: string
 }
 
-const EXECUTABLE_TYPES = new Set<BlockType>([
-  "Auth",
-  "Transfer",
-  "Storage",
-  "Event",
-  "Condition",
-])
+/** Contract error type emitted for graphs containing a Condition block. */
+export const GENERATED_ERROR_ENUM = `#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum GeneratedError {
+    /// A Condition block guard evaluated to false.
+    ConditionFailed = 1,
+}`
 
 /**
- * Returns nodes reachable from Start in breadth-first execution order.
+ * Returns executable nodes in breadth-first execution order.
+ *
+ * With no `rootId` the traversal starts at the Start node, which is the
+ * single-root behaviour every graph without `FunctionEntry` blocks relies on.
+ * Passing an explicit root walks one function subgraph instead, stopping at
+ * `FunctionReturn` nodes so a function body never bleeds into the next.
  */
-export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
-  const start = graph.nodes.find((n) => n.type === "default")
+export function getExecutionOrder(graph: ContractGraph, rootId?: string): ContractGraphNode[] {
+  const start = rootId
+    ? graph.nodes.find((n) => n.id === rootId)
+    : graph.nodes.find((n) => n.type === "default")
   if (!start) return []
 
   const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
@@ -39,6 +67,7 @@ export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
   const visited = new Set<string>()
   const order: ContractGraphNode[] = []
   const queue = [start.id]
+  const loopBodyIds = collectAllLoopBodyIds(graph)
 
   while (queue.length > 0) {
     const id = queue.shift()!
@@ -48,7 +77,11 @@ export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
     const node = nodeById.get(id)
     if (!node) continue
 
-    if (EXECUTABLE_TYPES.has(node.type)) {
+    // A return terminates the branch; nothing past it belongs to this function.
+    if (node.type === "FunctionReturn") continue
+
+    // Body-subgraph nodes are emitted inside the Loop, not as top-level statements.
+    if (EXECUTABLE_TYPES.has(node.type) && !loopBodyIds.has(node.id)) {
       order.push(node)
     }
 
@@ -60,10 +93,52 @@ export function getExecutionOrder(graph: ContractGraph): ContractGraphNode[] {
   return order
 }
 
+/**
+ * Returns the invocation parameters of a graph's entry point.
+ *
+ * For a multi-function graph this describes the first declared function, which
+ * is what the test and invoke panels drive; single-root graphs are unchanged.
+ */
 export function getFunctionParamsFromGraph(graph: ContractGraph): FunctionParam[] {
+  if (hasFunctionEntries(graph)) {
+    const collected = collectFunctionGroups(graph)
+    if (collected.ok && collected.groups.length > 0) {
+      return functionSignature(collected.groups[0])
+    }
+  }
+
   const executionOrder = getExecutionOrder(graph)
-  const blockTypes = new Set(executionOrder.map((n) => n.type))
-  return deriveParams(blockTypes)
+  const nodes = withLoopBodies(graph, executionOrder)
+  const blockTypes = new Set(nodes.map((n) => n.type))
+  return deriveParams(blockTypes, nodes)
+}
+
+/**
+ * Builds one function's full parameter list.
+ *
+ * `env` always comes first, then the parameters the author declared on the
+ * entry block, then any parameter the body's blocks reference implicitly
+ * (`caller`, `amount`, …) that the author did not already declare — without
+ * those the emitted body would not compile.
+ */
+export function functionSignature(group: FunctionGroup): FunctionParam[] {
+  const params: FunctionParam[] = [{ name: "env", rustType: "Env" }]
+  const seen = new Set<string>(["env"])
+
+  for (const declared of group.declaredParams) {
+    if (seen.has(declared.name)) continue
+    seen.add(declared.name)
+    params.push({ name: declared.name, rustType: declared.rustType })
+  }
+
+  const blockTypes = new Set(group.body.map((n) => n.type))
+  for (const derived of deriveParams(blockTypes, group.body)) {
+    if (seen.has(derived.name)) continue
+    seen.add(derived.name)
+    params.push(derived)
+  }
+
+  return params
 }
 
 export function paramRustTypeToInputType(rustType: string): "address" | "number" | "boolean" | "symbol" {
@@ -81,16 +156,31 @@ export function paramRustTypeToInputType(rustType: string): "address" | "number"
   }
 }
 
-function deriveParams(blockTypes: Set<BlockType>): FunctionParam[] {
+function deriveParams(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = []): FunctionParam[] {
   const params: FunctionParam[] = [{ name: "env", rustType: "Env" }]
 
   if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
     params.push({ name: "caller", rustType: "Address" })
   }
 
+  if (blockTypes.has("RBACCheck")) {
+    const hasToParam = nodes.some((n) => {
+      if (n.type !== "RBACCheck") return false
+      const action = n.data.params?.rbacAction ?? "require"
+      return action === "grant" || action === "revoke" || action === "transfer_admin"
+    })
+    if (hasToParam) {
+      params.push({ name: "to", rustType: "Address" })
+    }
+  }
+
   if (blockTypes.has("Transfer") || blockTypes.has("Event")) {
-    params.push({ name: "from", rustType: "Address" })
-    params.push({ name: "to", rustType: "Address" })
+    if (!params.some((p) => p.name === "from")) {
+      params.push({ name: "from", rustType: "Address" })
+    }
+    if (!params.some((p) => p.name === "to")) {
+      params.push({ name: "to", rustType: "Address" })
+    }
     params.push({ name: "amount", rustType: "i128" })
   }
 
@@ -99,8 +189,13 @@ function deriveParams(blockTypes: Set<BlockType>): FunctionParam[] {
   }
 
   if (blockTypes.has("Storage")) {
-    params.push({ name: "key", rustType: "Symbol" })
-    params.push({ name: "value", rustType: "i128" })
+    const hasWriteStorage = nodes.some(
+      (n) => n.type === "Storage" && (n.data.params?.storageMode ?? "write") === "write"
+    )
+    if (hasWriteStorage) {
+      params.push({ name: "key", rustType: "Symbol" })
+      params.push({ name: "value", rustType: "i128" })
+    }
   }
 
   if (blockTypes.has("Condition")) {
@@ -111,13 +206,25 @@ function deriveParams(blockTypes: Set<BlockType>): FunctionParam[] {
     params.push({ name: "event_name", rustType: "Symbol" })
   }
 
+  if (graphHasRangeLoop(nodes) || (blockTypes.has("Loop") && !graphHasVecLoop(nodes))) {
+    if (!params.some((p) => p.name === "start")) params.push({ name: "start", rustType: "i128" })
+    if (!params.some((p) => p.name === "end")) params.push({ name: "end", rustType: "i128" })
+  }
+
+  if (graphHasVecLoop(nodes)) {
+    if (!params.some((p) => p.name === "items")) params.push({ name: "items", rustType: "Vec<i128>" })
+  }
+
+  // Arguments and target addresses required by CrossContractCall blocks.
+  params.push(...crossContractParams(nodes, params.map((param) => param.name)))
+
   return params
 }
 
-function deriveImports(blockTypes: Set<BlockType>): string[] {
+function deriveImports(blockTypes: Set<BlockType>, nodes: ContractGraphNode[] = []): string[] {
   const imports = new Set<string>(["contract", "contractimpl", "Env"])
 
-  if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event")) {
+  if (blockTypes.has("Auth") || blockTypes.has("Transfer") || blockTypes.has("Event") || blockTypes.has("RBACCheck")) {
     imports.add("Address")
   }
 
@@ -125,31 +232,97 @@ function deriveImports(blockTypes: Set<BlockType>): string[] {
     imports.add("token")
   }
 
-  if (blockTypes.has("Storage") || blockTypes.has("Event") || blockTypes.has("Condition")) {
+  if (blockTypes.has("Storage") || blockTypes.has("Event") || blockTypes.has("Condition") || blockTypes.has("RBACCheck")) {
     imports.add("Symbol")
     imports.add("symbol_short")
   }
 
-  if (blockTypes.has("Condition")) {
+  if (blockTypes.has("Condition") || blockTypes.has("RBACCheck")) {
     imports.add("panic_with_error")
+  }
+
+  if (blockTypes.has("Condition")) {
+    imports.add("contracterror")
+  }
+
+  if (blockTypes.has("Loop")) {
+    imports.add("Vec")
+  }
+
+  for (const name of collectCrossContractImports(nodes)) {
+    imports.add(name)
   }
 
   return Array.from(imports).sort()
 }
 
-function emitBlock(node: ContractGraphNode): string {
+function emitBlock(
+  node: ContractGraphNode,
+  crossCallIndexes: Map<string, number>,
+  graph: ContractGraph
+): string {
   const label = node.data.label.replace(/"/g, '\\"')
 
   switch (node.type) {
+    case "CrossContractCall": {
+      const index = crossCallIndexes.get(node.id) ?? 0
+      const fn = node.data.params?.targetFunction?.trim()
+      return emitCrossContractCall(node, index, fn ? `${label} → ${fn}()` : label)
+    }
+
     case "Auth":
       return `        // ${label}\n        caller.require_auth();`
+
+    case "RBACCheck": {
+      const roleKind = node.data.params?.rbacRole ?? "admin"
+      const roleStr = roleKind === "custom"
+        ? (node.data.params?.rbacCustomRole?.trim() || "custom")
+        : roleKind
+      const action = node.data.params?.rbacAction ?? "require"
+      const sym = sanitizeSymbol(roleStr)
+
+      switch (action) {
+        case "require":
+          return `        // RBACCheck: require ${roleStr}\n` +
+                 `        let admin: Address = env.storage().instance()\n` +
+                 `            .get(&symbol_short!("${sym}"))\n` +
+                 `            .unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_${sym.slice(0, 6)}")));\n` +
+                 `        admin.require_auth();`
+        case "grant":
+          return `        // RBACCheck: grant ${roleStr}\n` +
+                 `        env.storage().instance().set(&symbol_short!("${sym}"), &to);`
+        case "revoke":
+          return `        // RBACCheck: revoke ${roleStr}\n` +
+                 `        env.storage().instance().remove(&symbol_short!("${sym}"));`
+        case "transfer_admin":
+          return `        // RBACCheck: transfer admin — propose new admin\n` +
+                 `        env.storage().instance().set(&symbol_short!("adm_pend"), &to);`
+        case "confirm_admin":
+          return `        // RBACCheck: transfer admin — confirm new admin\n` +
+                 `        let pending: Address = env.storage().instance()\n` +
+                 `            .get(&symbol_short!("adm_pend"))\n` +
+                 `            .unwrap_or_else(|| panic_with_error!(&env, symbol_short!("no_pend")));\n` +
+                 `        pending.require_auth();\n` +
+                 `        env.storage().instance().set(&symbol_short!("admin"), &pending);\n` +
+                 `        env.storage().instance().remove(&symbol_short!("adm_pend"));`
+        default:
+          return `        // ${label}\n        caller.require_auth();`
+      }
+    }
 
     case "Transfer":
       return `        // ${label}\n        token::Client::new(&env, &token).transfer(&from, &to, &amount);`
 
     case "Storage": {
       const key = node.data.params?.storageKey ?? "stored"
-      return `        // ${label}\n        env.storage().instance().set(&symbol_short!("${sanitizeSymbol(key)}"), &value);`
+      const mode = node.data.params?.storageMode ?? "write"
+      const scope = node.data.params?.storageScope ?? "instance"
+      const sym = sanitizeSymbol(key)
+      if (mode === "read") {
+        // Read-mode nodes emit a standalone getter — nothing in the execute body
+        return ""
+      }
+      return `        // ${label}\n        env.storage().${scope}().set(&symbol_short!("${sym}"), &value);`
     }
 
     case "Event":
@@ -159,10 +332,19 @@ function emitBlock(node: ContractGraphNode): string {
       const expr = node.data.params?.conditionExpression
       if (expr) {
         const rustCondition = buildRustCondition(expr)
-        return `        // ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+        return `        // ${label}\n        if !(${rustCondition}) {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
       }
       // Legacy fallback (no expression defined yet)
-      return `        // ${label}\n        if !release {\n            panic_with_error!(&env, symbol_short!("cond"));\n        }`
+      return `        // ${label}\n        if !release {\n            panic_with_error!(&env, GeneratedError::ConditionFailed);\n        }`
+    }
+
+    case "Loop": {
+      const bodyNodes = getLoopBodyNodes(graph, node.id).nodes
+      const bodySource = bodyNodes
+        .map((bodyNode) => emitBlock(bodyNode, crossCallIndexes, graph))
+        .filter(Boolean)
+        .join("\n\n")
+      return emitLoopRust(node, bodySource)
     }
 
     default:
@@ -212,6 +394,55 @@ function buildRustCondition(expr: ConditionExpression): string {
   return `${left} ${expr.operator} ${right}`
 }
 
+/**
+ * Derives the unwrap_or default value string for a given return type.
+ */
+function defaultForReturnType(returnType: string): string {
+  switch (returnType) {
+    case "bool": return "false"
+    case "i128": return "0"
+    case "Symbol": return "Symbol::short(\"\".as_bytes())"
+    case "Address": return 'panic!("not found")'
+    default: return "0"
+  }
+}
+
+/**
+ * Emits standalone pub fn get_<key>(env: Env) -> <returnType> functions
+ * for each unique read-mode Storage node.
+ */
+function emitStorageGetters(nodes: ContractGraphNode[]): string {
+  const seen = new Set<string>()
+  const fns: string[] = []
+
+  for (const node of nodes) {
+    if (node.type !== "Storage") continue
+    const mode = node.data.params?.storageMode ?? "write"
+    if (mode !== "read") continue
+
+    const key = node.data.params?.storageKey ?? "stored"
+    const sym = sanitizeSymbol(key)
+    if (seen.has(sym)) continue
+    seen.add(sym)
+
+    const scope: StorageScope = node.data.params?.storageScope ?? "instance"
+    const returnType = node.data.params?.storageReturnType ?? "i128"
+    const fnName = `get_${sym}`
+    const defaultVal = defaultForReturnType(returnType)
+
+    fns.push(
+      `    /// Generated getter for storage key "${sym}".\n` +
+      `    pub fn ${fnName}(env: Env) -> ${returnType} {\n` +
+      `        env.storage().${scope}()\n` +
+      `            .get::<_, ${returnType}>(&symbol_short!("${sym}"))\n` +
+      `            .unwrap_or(${defaultVal})\n` +
+      `    }`
+    )
+  }
+
+  return fns.join("\n\n")
+}
+
 function fnv1aHash(input: string): string {
   let hash = 0x811c9dc5
   for (let i = 0; i < input.length; i++) {
@@ -219,6 +450,19 @@ function fnv1aHash(input: string): string {
     hash = Math.imul(hash, 0x01000193)
   }
   return (hash >>> 0).toString(16).padStart(8, "0")
+}
+
+/** Main-order nodes plus every Loop body subgraph they contain (for params/imports). */
+function withLoopBodies(graph: ContractGraph, mainOrder: ContractGraphNode[]): ContractGraphNode[] {
+  const seen = new Set(mainOrder.map((n) => n.id))
+  const extra: ContractGraphNode[] = []
+  const bodyIds = collectAllLoopBodyIds(graph)
+  for (const node of graph.nodes) {
+    if (seen.has(node.id) || !bodyIds.has(node.id)) continue
+    extra.push(node)
+    seen.add(node.id)
+  }
+  return [...mainOrder, ...extra]
 }
 
 /**
@@ -230,17 +474,36 @@ export function generateContractSource(graph: ContractGraph): CodegenResult {
     throw new Error(structureError.message)
   }
 
-  const executionOrder = getExecutionOrder(graph)
-  const blockTypes = new Set(executionOrder.map((n) => n.type))
+  if (hasFunctionEntries(graph)) {
+    return generateMultiFunctionSource(graph)
+  }
 
-  const imports = deriveImports(blockTypes)
-  const params = deriveParams(blockTypes)
+  const executionOrder = getExecutionOrder(graph)
+  const codegenNodes = withLoopBodies(graph, executionOrder)
+  const blockTypes = new Set(codegenNodes.map((n) => n.type))
+
+  const imports = deriveImports(blockTypes, codegenNodes)
+  const params = deriveParams(blockTypes, codegenNodes)
   const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
-  const body = executionOrder.map(emitBlock).filter(Boolean).join("\n\n")
+
+  const crossCallIndexes = new Map(
+    getCrossContractNodes(codegenNodes).map((node, index) => [node.id, index])
+  )
+  const body = executionOrder
+    .map((node) => emitBlock(node, crossCallIndexes, graph))
+    .filter(Boolean)
+    .join("\n\n")
+
+  const clients = emitCrossContractClients(codegenNodes)
+  const declarations = [blockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
+    .filter(Boolean)
+    .join("\n\n")
+
+  const getters = emitStorageGetters(codegenNodes)
 
   const source = `#![no_std]
 use soroban_sdk::{${imports.join(", ")}};
-
+${declarations ? `\n${declarations}\n` : ""}
 #[contract]
 pub struct LumensBlockGenerated;
 
@@ -250,7 +513,7 @@ impl LumensBlockGenerated {
     pub fn execute(${paramList}) {
 ${body}
     }
-}
+${getters ? `\n${getters}\n` : ""}}
 `
 
   return {
@@ -258,6 +521,96 @@ ${body}
     sourceHash: fnv1aHash(source),
     blockOrder: executionOrder.map((n) => `${n.type}:${n.id}`),
   }
+}
+
+/**
+ * Emits one `pub fn` per FunctionEntry inside a single `#[contractimpl]` block.
+ */
+function generateMultiFunctionSource(graph: ContractGraph): CodegenResult {
+  const collected = collectFunctionGroups(graph)
+  if (!collected.ok) {
+    throw new Error(collected.error.message)
+  }
+
+  const { groups } = collected
+
+  const allBlockTypes = new Set<BlockType>()
+  for (const group of groups) {
+    for (const node of group.body) allBlockTypes.add(node.type)
+  }
+
+  const allBodyNodes = groups.flatMap((group) => group.body)
+
+  const needsSymbolShort = groups.some(
+    (g) => g.returnValue !== null && g.returnValue.includes("symbol_short!")
+  )
+  const imports = deriveImports(allBlockTypes, allBodyNodes)
+  if (needsSymbolShort && !imports.includes("symbol_short")) {
+    imports.push("Symbol", "symbol_short")
+    imports.sort()
+  }
+
+  const functions = groups.map((group) => emitFunction(graph, group)).join("\n\n")
+
+  // Client traits and the error enum are module-level, so they are emitted once
+  // for every cross-contract call and Condition block across all functions.
+  const clients = emitCrossContractClients(allBodyNodes)
+  const declarations = [allBlockTypes.has("Condition") ? GENERATED_ERROR_ENUM : "", clients]
+    .filter(Boolean)
+    .join("\n\n")
+
+  const source = `#![no_std]
+use soroban_sdk::{${imports.join(", ")}};
+${declarations ? `\n${declarations}\n` : ""}
+#[contract]
+pub struct LumensBlockGenerated;
+
+#[contractimpl]
+impl LumensBlockGenerated {
+${functions}
+}
+`
+
+  const blockOrder: string[] = []
+  for (const group of groups) {
+    for (const node of group.body) blockOrder.push(`${node.type}:${node.id}`)
+  }
+
+  return {
+    source,
+    sourceHash: fnv1aHash(source),
+    blockOrder,
+  }
+}
+
+/** Renders one function group as a Rust method. */
+function emitFunction(graph: ContractGraph, group: FunctionGroup): string {
+  const params = functionSignature(group)
+  const paramList = params.map((p) => `${p.name}: ${p.rustType}`).join(", ")
+  const returnClause = group.returnType === "()" ? "" : ` -> ${group.returnType}`
+
+  // Cross-contract call slots are numbered per function: each function declares
+  // its own `target_contract`, `target_contract_2`, … parameters.
+  const crossCallIndexes = new Map(
+    getCrossContractNodes(group.body).map((node, index) => [node.id, index])
+  )
+
+  const loopBodyIds = collectAllLoopBodyIds(graph)
+  const statements = group.body
+    .filter((node) => !loopBodyIds.has(node.id))
+    .map((node) => emitBlock(node, crossCallIndexes, graph))
+    .filter(Boolean)
+  if (group.returnValue !== null) {
+    statements.push(`        ${group.returnValue}`)
+  }
+
+  const label = group.entry.data.label.replace(/"/g, '\\"')
+  const body = statements.join("\n\n")
+
+  return `    /// Generated from FunctionEntry "${label}".
+    ${group.visibility} fn ${group.name}(${paramList})${returnClause} {
+${body}
+    }`
 }
 
 export const GENERATED_CARGO_TOML = `[package]

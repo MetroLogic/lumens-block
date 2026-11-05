@@ -7,9 +7,14 @@ export const metadata: Metadata = {
   description: "Visual drag-and-drop platform for building smart contracts on Stellar",
 }
 
+const themeInitScript = `(function(){try{var t=localStorage.getItem("lumens-block:theme");if(t!=="dark"&&t!=="light"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}if(t==="dark"){document.documentElement.classList.add("dark")}else{document.documentElement.classList.remove("dark")}}catch(e){}})();`
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         <ThemeProvider>{children}</ThemeProvider>
       </body>

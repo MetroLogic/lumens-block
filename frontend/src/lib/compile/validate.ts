@@ -8,10 +8,18 @@ import {
   MAX_GRAPH_BYTES,
   MAX_NODES,
   isBlockType,
+  isCrossContractArgSource,
+  isCrossContractType,
+  CROSS_CONTRACT_TYPES,
   OPERATORS,
   type ConditionExpression,
+  type CrossContractArg,
   type Operand,
 } from "./schema"
+import { cycleValidationError, findCycle } from "./cycle"
+import { collectFunctionGroups, hasFunctionEntries, EXECUTABLE_TYPES } from "./functions"
+import { inferGraphTypes } from "./typeInference"
+import { validateLoopBlocks } from "./loop"
 
 function invalid(code: string, message: string, details?: string[]): CompileError {
   return { code, message, details }
@@ -62,6 +70,97 @@ function validateConditionExpression(nodeId: string, raw: unknown): CompileError
 }
 
 
+/**
+ * Validates the `targetArgs` list of a CrossContractCall node.
+ * Returns a CompileError when malformed, or null when acceptable.
+ */
+function validateCrossContractArgs(nodeId: string, raw: unknown): CompileError | null {
+  if (raw === undefined) return null
+
+  if (!Array.isArray(raw)) {
+    return invalid(
+      "INVALID_ARGS",
+      `Node "${nodeId}" has a malformed targetArgs (must be an array).`
+    )
+  }
+
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i]
+
+    if (!isPlainObject(entry)) {
+      return invalid("INVALID_ARGS", `Node "${nodeId}" argument ${i + 1} must be an object.`)
+    }
+
+    const arg = entry as unknown as CrossContractArg
+
+    if (typeof arg.name !== "string" || arg.name.trim() === "") {
+      return invalid("INVALID_ARGS", `Node "${nodeId}" argument ${i + 1} must have a name.`)
+    }
+
+    if (typeof arg.value !== "string") {
+      return invalid(
+        "INVALID_ARGS",
+        `Node "${nodeId}" argument "${arg.name}" must have a string value.`
+      )
+    }
+
+    if (!isCrossContractType(arg.rustType)) {
+      return invalid(
+        "INVALID_ARG_TYPE",
+        `Node "${nodeId}" argument "${arg.name}" has unsupported Rust type "${String(arg.rustType)}".`,
+        [...CROSS_CONTRACT_TYPES]
+      )
+    }
+
+    if (arg.source !== undefined && !isCrossContractArgSource(arg.source)) {
+      return invalid(
+        "INVALID_ARGS",
+        `Node "${nodeId}" argument "${arg.name}" has an unknown value source "${String(arg.source)}".`
+      )
+    }
+  }
+
+  return null
+}
+
+/**
+ * Validates the configuration of a single CrossContractCall node.
+ * Returns a CompileError when the block cannot be compiled, or null when it can.
+ */
+function validateCrossContractCall(node: ContractGraphNode): CompileError | null {
+  const params = node.data.params ?? {}
+
+  const targetContractId = typeof params.targetContractId === "string" ? params.targetContractId.trim() : ""
+  if (targetContractId === "") {
+    return invalid(
+      "MISSING_TARGET_CONTRACT",
+      `Cross-contract call "${node.data.label}" (node "${node.id}") is missing a target contract address.`
+    )
+  }
+
+  const targetFunction = typeof params.targetFunction === "string" ? params.targetFunction.trim() : ""
+  if (targetFunction === "") {
+    return invalid(
+      "MISSING_TARGET_FUNCTION",
+      `Cross-contract call "${node.data.label}" (node "${node.id}") is missing a target function name.`
+    )
+  }
+
+  const argsError = validateCrossContractArgs(node.id, params.targetArgs)
+  if (argsError) return argsError
+
+  const returnBinding = typeof params.returnBinding === "string" ? params.returnBinding.trim() : ""
+  if (returnBinding !== "" && params.returnType !== undefined && !isCrossContractType(params.returnType)) {
+    return invalid(
+      "INVALID_RETURN_TYPE",
+      `Cross-contract call "${node.data.label}" (node "${node.id}") has unsupported return type "${String(params.returnType)}".`,
+      [...CROSS_CONTRACT_TYPES]
+    )
+  }
+
+  return null
+}
+
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -103,6 +202,13 @@ function parseNode(raw: unknown, index: number): ContractGraphNode | CompileErro
   if (type === "Condition" && isPlainObject(params) && params.conditionExpression !== undefined) {
     const exprError = validateConditionExpression(id, params.conditionExpression)
     if (exprError) return exprError
+  }
+
+  // Validate the argument list of CrossContractCall nodes (shape only — required
+  // fields are enforced by validateGraphStructure so in-progress editor graphs load).
+  if (type === "CrossContractCall" && isPlainObject(params)) {
+    const argsError = validateCrossContractArgs(id, params.targetArgs)
+    if (argsError) return argsError
   }
 
   let parsedPosition: ContractGraphNode["position"]
@@ -289,7 +395,11 @@ export function validateContractGraph(
   }
 
   const startNodes = parsedNodes.filter((n) => n.type === "default")
-  if (startNodes.length === 0) {
+  const declaresFunctions = parsedNodes.some((n) => n.type === "FunctionEntry")
+
+  // A graph built entirely out of named function entry points has no use for a
+  // Start node; every other graph is still rooted at exactly one.
+  if (startNodes.length === 0 && !declaresFunctions) {
     return {
       ok: false,
       error: invalid(
@@ -325,6 +435,24 @@ export function validateContractGraph(
  * Ensures executable blocks are reachable from Start and the graph has actionable logic.
  */
 export function validateGraphStructure(graph: ContractGraph): CompileError | null {
+  // Cycles are always a user error: Soroban has no graph-edge loops.
+  // Check the whole graph (including disconnected components) before any
+  // other structure rule so codegen never sees a cyclic input.
+  const cyclePath = findCycle(graph)
+  if (cyclePath) {
+    return cycleValidationError(graph, cyclePath)
+  }
+
+  const loopError = validateLoopBlocks(graph)
+  if (loopError) return loopError
+
+  // Graphs with explicit entry points are validated per function instead of by
+  // reachability from a single Start node.
+  if (hasFunctionEntries(graph)) {
+    const collected = collectFunctionGroups(graph)
+    return collected.ok ? null : collected.error
+  }
+
   const start = graph.nodes.find((n) => n.type === "default")
   if (!start) {
     return invalid("MISSING_START_NODE", 'Graph must include a Start node (type "default").')
@@ -349,15 +477,68 @@ export function validateGraphStructure(graph: ContractGraph): CompileError | nul
     }
   }
 
-  const executableTypes = new Set(["Condition", "Transfer", "Storage", "Event", "Auth"])
   const executableNodes = graph.nodes.filter(
-    (n) => executableTypes.has(n.type) && reachable.has(n.id)
+    (n) => EXECUTABLE_TYPES.has(n.type) && reachable.has(n.id)
   )
 
   if (executableNodes.length === 0) {
     return invalid(
       "NO_EXECUTABLE_BLOCKS",
-      "Graph must contain at least one executable block (Auth, Transfer, Storage, Event, or Condition) reachable from Start."
+      "Graph must contain at least one executable block (Auth, RBACCheck, Transfer, Storage, Event, Condition, Cross-Contract Call, or Loop) reachable from Start."
+    )
+  }
+
+  // RBACCheck nodes validation
+  for (const node of executableNodes) {
+    if (node.type !== "RBACCheck") continue
+    const role = node.data.params?.rbacRole ?? "admin"
+    if (role === "custom") {
+      const customRole = typeof node.data.params?.rbacCustomRole === "string"
+        ? node.data.params.rbacCustomRole.trim()
+        : ""
+      if (customRole === "") {
+        return invalid(
+          "INCOMPLETE_BLOCK",
+          `RBAC block "${node.data.label}" (node "${node.id}") has custom role selected but role name is empty.`
+        )
+      }
+    }
+  }
+
+  // Cross-contract calls cannot be compiled without a target contract and function.
+  for (const node of executableNodes) {
+    if (node.type !== "CrossContractCall") continue
+    const callError = validateCrossContractCall(node)
+    if (callError) return callError
+  }
+
+  // Read-mode Storage nodes must have a non-empty storageKey.
+  for (const node of executableNodes) {
+    if (node.type !== "Storage") continue
+    const mode = node.data.params?.storageMode ?? "write"
+    if (mode === "read") {
+      const key = typeof node.data.params?.storageKey === "string"
+        ? node.data.params.storageKey.trim()
+        : ""
+      if (key === "") {
+        return invalid(
+          "INCOMPLETE_BLOCK",
+          `Storage block "${node.data.label}" (node "${node.id}") is in read mode but has no storageKey.`
+        )
+      }
+    }
+  }
+
+  // Editor-time type checking: mismatched Condition operands and Storage
+  // data edges compile fine structurally but fail `cargo build`. Surface
+  // every mismatch found (rather than just the first) as `details` on one
+  // CompileError, keyed by edgeId so the editor can highlight each offender.
+  const typeResult = inferGraphTypes(graph)
+  if (typeResult.errors.length > 0) {
+    return invalid(
+      "TYPE_MISMATCH",
+      `Graph has ${typeResult.errors.length} type error${typeResult.errors.length === 1 ? "" : "s"}.`,
+      typeResult.errors.map((e) => e.message)
     )
   }
 

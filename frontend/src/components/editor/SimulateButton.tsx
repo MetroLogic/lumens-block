@@ -9,9 +9,11 @@ import SimulateModal from "./SimulateModal"
 interface Props {
   nodes: Node[]
   edges: Edge[]
+  /** When true, the button is disabled (e.g. unresolved type errors). */
+  disabled?: boolean
 }
 
-export default function SimulateButton({ nodes, edges }: Props) {
+export default function SimulateButton({ nodes, edges, disabled = false }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const [args, setArgs] = useState<SimulateArg[]>([])
   const [status, setStatus] = useState<"idle" | "simulating" | "success" | "error">("idle")
@@ -47,9 +49,10 @@ export default function SimulateButton({ nodes, edges }: Props) {
     <>
       <button
         onClick={handleOpen}
-        className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-violet-700 transition-colors"
+        disabled={disabled}
+        className="flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-violet-700 disabled:opacity-60 transition-colors"
         aria-label="Simulate contract"
-        title="Simulate contract without submitting to chain"
+        title={disabled ? "Resolve type errors before simulating" : "Simulate contract without submitting to chain"}
       >
         <FlaskConical size={15} />
         Simulate
