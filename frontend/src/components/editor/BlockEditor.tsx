@@ -74,6 +74,7 @@ export default function BlockEditor() {
   const [walletBalance, setWalletBalance] = useState<string>("—")
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
+  const skipNextAutosaveRef = useRef(false)
   const [deployedContractId, setDeployedContractId] = useState<string | null>(null)
   const [typeErrors, setTypeErrors] = useState<TypeMismatchError[]>([])
   const [hoveredErrorEdge, setHoveredErrorEdge] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -177,8 +178,8 @@ export default function BlockEditor() {
     setEdges([])
     setTestResults(null)
     setOverrideTestFailure(false)
+    skipNextAutosaveRef.current = true
     clearGraphStorage()
-    saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
   }, [setNodes, setEdges])
 
   const handleClearCanvas = useCallback(() => {
@@ -296,6 +297,10 @@ export default function BlockEditor() {
   // Debounced auto-save
   useEffect(() => {
     if (!hydrated) return
+    if (skipNextAutosaveRef.current) {
+      skipNextAutosaveRef.current = false
+      return
+    }
 
     const timer = window.setTimeout(() => {
       saveGraphToStorage(toContractGraph(nodes, edges))

@@ -45,3 +45,35 @@ test("graph is saved to localStorage and restored on reload", async ({ page }) =
   // The Transfer node should still be present
   await expect(page.locator('[data-testid="block-node-Transfer"]')).toBeVisible()
 })
+
+test("clear canvas removes persisted graph state", async ({ page }) => {
+  await page.goto("/editor")
+
+  const toolbar = page.locator('[data-testid="toolbar"]')
+  await expect(toolbar).toBeVisible()
+
+  const transferItem = page.locator('[data-testid="toolbar-block-transfer"]')
+  await transferItem.focus()
+  await transferItem.press("Enter")
+
+  await page.waitForFunction(() => {
+    const raw = localStorage.getItem("lumens-block:graph")
+    if (!raw) return false
+    try {
+      const graph = JSON.parse(raw) as { nodes: unknown[] }
+      return Array.isArray(graph.nodes) && graph.nodes.length > 1
+    } catch {
+      return false
+    }
+  }, undefined, { timeout: 5_000 })
+
+  page.once("dialog", (dialog) => dialog.accept())
+  await page.getByRole("button", { name: "Clear canvas" }).click()
+
+  await expect(page.locator('[data-testid="block-node-Transfer"]')).toHaveCount(0)
+  await page.waitForFunction(
+    () => localStorage.getItem("lumens-block:graph") === null,
+    undefined,
+    { timeout: 1_000 }
+  )
+})
