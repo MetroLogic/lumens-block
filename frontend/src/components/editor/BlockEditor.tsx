@@ -8,10 +8,14 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
   type Connection,
+  type Edge,
+  type EdgeMouseHandler,
   type ReactFlowInstance,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { findCycle, formatCycleMessage } from "@/lib/compile/cycle"
+import { inferGraphTypes, type TypeMismatchError } from "@/lib/compile/typeInference"
 import { applyAutoLayout } from "@/lib/layout"
 import {
   EMPTY_GRAPH_NODES,
@@ -29,12 +33,15 @@ import ShortcutsOverlay from "./ShortcutsOverlay"
 import DeployButton from "./DeployButton"
 import SimulateButton from "./SimulateButton"
 import TestsPanel from "./TestsPanel"
+import InvokePanel from "./InvokePanel"
 import BlockNode from "./BlockNode"
 import TemplatesModal from "./TemplatesModal"
+import CodePreviewModal from "./CodePreviewModal"
 import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
+import { DEFAULT_LOOP_CONFIG } from "@/lib/compile/schema"
 
 const nodeTypes = {
   Condition: BlockNode,
@@ -42,6 +49,11 @@ const nodeTypes = {
   Storage: BlockNode,
   Event: BlockNode,
   Auth: BlockNode,
+  RBACCheck: BlockNode,
+  CrossContractCall: BlockNode,
+  FunctionEntry: BlockNode,
+  FunctionReturn: BlockNode,
+  Loop: BlockNode,
   default: BlockNode,
 }
 
@@ -54,6 +66,7 @@ export default function BlockEditor() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false)
+  const [isCodePreviewOpen, setIsCodePreviewOpen] = useState(false)
   const [testResults, setTestResults] = useState<ContractTestRunResult | null>(null)
   const [overrideTestFailure, setOverrideTestFailure] = useState(false)
   const [selectedNetwork, setSelectedNetwork] = useState<StellarNetwork>("testnet")
@@ -62,6 +75,10 @@ export default function BlockEditor() {
   const [walletError, setWalletError] = useState<string | null>(null)
   const [isWalletLoading, setIsWalletLoading] = useState(false)
   const skipNextAutosaveRef = useRef(false)
+  const [deployedContractId, setDeployedContractId] = useState<string | null>(null)
+  const [typeErrors, setTypeErrors] = useState<TypeMismatchError[]>([])
+  const [hoveredErrorEdge, setHoveredErrorEdge] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [cycleError, setCycleError] = useState<{ message: string; nodeIds: string[] } | null>(null)
 
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
@@ -105,7 +122,10 @@ export default function BlockEditor() {
         id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
         position,
-        data: { label: type },
+        data: {
+          label: type,
+          ...(type === "Loop" ? { params: { loop: { ...DEFAULT_LOOP_CONFIG } } } : {}),
+        },
       }
 
       setNodes((nds) => nds.concat(newNode))
@@ -162,6 +182,19 @@ export default function BlockEditor() {
     clearGraphStorage()
   }, [setNodes, setEdges])
 
+  const handleClearCanvas = useCallback(() => {
+    const confirmed = window.confirm(
+      "Clear the saved graph from this browser and reset the canvas?"
+    )
+    if (!confirmed) return
+
+    clearGraphStorage()
+    setNodes([])
+    setEdges([])
+    setTestResults(null)
+    setOverrideTestFailure(false)
+  }, [setNodes, setEdges])
+
   const handleExport = useCallback(() => {
     downloadGraphJson(toContractGraph(nodes, edges))
   }, [nodes, edges])
@@ -198,7 +231,10 @@ export default function BlockEditor() {
         id: `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
         position,
-        data: { label: type },
+        data: {
+          label: type,
+          ...(type === "Loop" ? { params: { loop: { ...DEFAULT_LOOP_CONFIG } } } : {}),
+        },
       }
 
       setNodes((nds) => nds.concat(newNode))
@@ -273,6 +309,81 @@ export default function BlockEditor() {
     return () => window.clearTimeout(timer)
   }, [nodes, edges, hydrated])
 
+  // Debounced editor-time type checking — re-evaluated on every graph change
+  // so mismatched edges light up red without waiting for a Compile click.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const { errors } = inferGraphTypes(toContractGraph(nodes, edges))
+      setTypeErrors(errors)
+    }, GRAPH_AUTOSAVE_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [nodes, edges])
+
+  // Debounced cycle detection so cyclic nodes highlight as soon as the user
+  // closes a loop, without waiting for Code Preview / Deploy.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const graph = toContractGraph(nodes, edges)
+      const path = findCycle(graph)
+      if (!path) {
+        setCycleError(null)
+        return
+      }
+      setCycleError({ message: formatCycleMessage(graph, path), nodeIds: path })
+    }, GRAPH_AUTOSAVE_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [nodes, edges])
+
+  const styledNodes = useMemo(() => {
+    if (!cycleError) return nodes
+    const ids = new Set(cycleError.nodeIds)
+    return nodes.map((node) =>
+      ids.has(node.id)
+        ? {
+            ...node,
+            className: [node.className, "cycle-error-node"].filter(Boolean).join(" "),
+            data: { ...node.data, hasCycleError: true },
+          }
+        : node
+    )
+  }, [nodes, cycleError])
+
+  // Maps edgeId → the first mismatch message for that edge, for red styling
+  // and the hover tooltip below.
+  const typeErrorsByEdge = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const error of typeErrors) {
+      if (!map.has(error.edgeId)) map.set(error.edgeId, error.message)
+    }
+    return map
+  }, [typeErrors])
+
+  const styledEdges = useMemo<Edge[]>(
+    () =>
+      edges.map((edge) =>
+        typeErrorsByEdge.has(edge.id)
+          ? {
+              ...edge,
+              className: [edge.className, "type-mismatch-edge"].filter(Boolean).join(" "),
+              style: { ...edge.style, stroke: "#ef4444", strokeWidth: 2.5 },
+            }
+          : edge
+      ),
+    [edges, typeErrorsByEdge]
+  )
+
+  const onEdgeMouseEnter: EdgeMouseHandler = useCallback(
+    (event, edge) => {
+      if (!typeErrorsByEdge.has(edge.id)) return
+      setHoveredErrorEdge({ id: edge.id, x: event.clientX, y: event.clientY })
+    },
+    [typeErrorsByEdge]
+  )
+
+  const onEdgeMouseLeave: EdgeMouseHandler = useCallback(() => setHoveredErrorEdge(null), [])
+
   // Auto-dismiss toast
   useEffect(() => {
     if (!toast) return
@@ -311,20 +422,25 @@ export default function BlockEditor() {
         onAddBlock={onAddBlock}
         onAutoLayout={handleAutoLayout}
         onNew={handleNew}
+        onClearCanvas={handleClearCanvas}
         onExport={handleExport}
         onImport={(file) => void handleImport(file)}
       />
 
       <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
 
+      <InvokePanel deployedContractId={deployedContractId} network={selectedNetwork} />
+
       <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={styledNodes}
+          edges={styledEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onInit={setReactFlowInstance}
+          onEdgeMouseEnter={onEdgeMouseEnter}
+          onEdgeMouseLeave={onEdgeMouseLeave}
           nodeTypes={nodeTypes}
           fitView
         >
@@ -332,6 +448,17 @@ export default function BlockEditor() {
           <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-200" />
           <MiniMap className="dark:bg-slate-800 dark:border-slate-700" maskColor={theme === "dark" ? "rgba(15, 23, 42, 0.7)" : "rgba(240, 242, 245, 0.7)"} />
         </ReactFlow>
+
+        {hoveredErrorEdge && (
+          <div
+            data-testid="edge-type-error-tooltip"
+            role="tooltip"
+            className="pointer-events-none fixed z-30 max-w-xs rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-red-800 shadow-lg dark:border-red-800 dark:bg-red-950/90 dark:text-red-200"
+            style={{ left: hoveredErrorEdge.x + 12, top: hoveredErrorEdge.y + 12 }}
+          >
+            {typeErrorsByEdge.get(hoveredErrorEdge.id)}
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
@@ -348,15 +475,52 @@ export default function BlockEditor() {
             </label>
           </div>
         )}
+        {cycleError && (
+          <div
+            data-testid="cycle-error-banner"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+          >
+            <p className="font-semibold">{cycleError.message}</p>
+            <p className="mt-1">Soroban contracts cannot have cyclic control flow.</p>
+          </div>
+        )}
+        {typeErrors.length > 0 && (
+          <div
+            data-testid="type-error-banner"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+          >
+            <p className="font-semibold">
+              {typeErrors.length} type error{typeErrors.length === 1 ? "" : "s"} — fix before compiling
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-3">
-          <SimulateButton nodes={nodes} edges={edges} />
+          <button
+            data-testid="code-preview-button"
+            onClick={() => setIsCodePreviewOpen(true)}
+            disabled={typeErrors.length > 0}
+            className="relative flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+            title={typeErrors.length > 0 ? "Resolve type errors before compiling" : "Preview generated Soroban contract code"}
+          >
+            <span className="font-mono font-bold text-blue-600 dark:text-blue-400">&lt;/&gt;</span> Code Preview
+            {typeErrors.length > 0 && (
+              <span
+                data-testid="type-error-badge"
+                className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white"
+              >
+                {typeErrors.length}
+              </span>
+            )}
+          </button>
+          <SimulateButton nodes={nodes} edges={edges} disabled={typeErrors.length > 0} />
           <DeployButton
             nodes={nodes}
             edges={edges}
             selectedNetwork={selectedNetwork}
             walletAddress={walletAddress}
             walletBalance={walletBalance}
-            disabled={testsBlockingDeploy}
+            disabled={testsBlockingDeploy || typeErrors.length > 0}
+            onDeploySuccess={(id) => setDeployedContractId(id)}
           />
         </div>
       </div>
@@ -366,6 +530,12 @@ export default function BlockEditor() {
         isOpen={isTemplatesOpen}
         onClose={() => setIsTemplatesOpen(false)}
         onSelectTemplate={handleLoadTemplate}
+      />
+      <CodePreviewModal
+        isOpen={isCodePreviewOpen}
+        onClose={() => setIsCodePreviewOpen(false)}
+        nodes={nodes}
+        edges={edges}
       />
 
       {toast && (

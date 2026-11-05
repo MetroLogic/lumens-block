@@ -1,10 +1,29 @@
 "use client"
 
-import { Download, FilePlus2, FolderOpen, Moon, Sun, Upload } from "lucide-react"
+import { Download, FilePlus2, FolderOpen, Moon, Repeat, Sun, Trash2, Upload } from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
-const BLOCK_TYPES = ["Condition", "Transfer", "Storage", "Event", "Auth"]
+const BLOCK_TYPES = [
+  "Condition",
+  "Transfer",
+  "Storage",
+  "Event",
+  "Auth",
+  "RBACCheck",
+  "CrossContractCall",
+  "FunctionEntry",
+  "FunctionReturn",
+  "Loop",
+]
+
+/** Display names for block types whose identifier is not readable as-is. */
+const BLOCK_LABELS: Record<string, string> = {
+  RBACCheck: "RBAC Check",
+  CrossContractCall: "Cross-Contract Call",
+  FunctionEntry: "Function Entry",
+  FunctionReturn: "Function Return",
+}
 
 interface Props {
   onOpenShortcuts?: () => void
@@ -12,6 +31,7 @@ interface Props {
   onAddBlock?: (type: string) => void
   onAutoLayout?: () => void
   onNew?: () => void
+  onClearCanvas?: () => void
   onExport?: () => void
   onImport?: (file: File) => void
 }
@@ -22,6 +42,7 @@ export default function Toolbar({
   onAddBlock,
   onAutoLayout,
   onNew,
+  onClearCanvas,
   onExport,
   onImport,
 }: Props) {
@@ -93,9 +114,20 @@ export default function Toolbar({
           data-testid={`toolbar-block-${type.toLowerCase()}`}
           onDragStart={(e) => onDragStart(e, type)}
           onKeyDown={(e) => handleKeyDown(e, index, type)}
-          className="cursor-grab rounded border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+          className={`cursor-grab rounded border px-3 py-1.5 text-sm hover:bg-slate-50 active:cursor-grabbing focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-slate-700 ${
+            type === "Loop"
+              ? "border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-700 dark:bg-orange-950/40 dark:text-orange-200"
+              : "border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-200"
+          }`}
         >
-          {type}
+          {type === "Loop" ? (
+            <span className="flex items-center gap-1.5">
+              <Repeat size={14} aria-hidden="true" />
+              Loop
+            </span>
+          ) : (
+            (BLOCK_LABELS[type] ?? type)
+          )}
         </div>
       ))}
 
@@ -108,7 +140,7 @@ export default function Toolbar({
             Auto Layout
           </button>
         )}
-        {(onNew || onExport || onImport) && (
+        {(onNew || onClearCanvas || onExport || onImport) && (
           <div className="flex flex-col gap-1.5">
             {onNew && (
               <button
@@ -117,6 +149,16 @@ export default function Toolbar({
               >
                 <FilePlus2 size={14} />
                 Clear canvas
+              </button>
+            )}
+            {onClearCanvas && (
+              <button
+                onClick={onClearCanvas}
+                title="Remove saved graph and reset the canvas"
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+              >
+                <Trash2 size={14} />
+                Clear
               </button>
             )}
             {onExport && (

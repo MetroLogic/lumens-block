@@ -34,6 +34,7 @@ It's designed for:
 |---|---|
 | Frontend | Next.js + TypeScript |
 | Block Editor | React Flow |
+| Backend | Rust + Axum |
 | Smart Contracts | Rust + Soroban SDK |
 | Stellar Integration | js-stellar-sdk |
 | Wallet | Freighter API |
@@ -110,14 +111,47 @@ Tests are located in `frontend/e2e/` and cover:
 
 ### Backend (Rust API)
 
+The backend service handles server-side compilation of Soroban smart contracts into WASM binaries and handles contract deployment submissions.
+
 ```bash
 cd backend
 
 # Check the project compiles
 cargo check
 
-# Run the backend
+# Run tests
+cargo test
+
+# Run the backend (default port: 8080)
 cargo run
+```
+
+#### Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | Health check (returns `{"status": "ok"}`) |
+| `/compile` | POST | Accepts Rust source (`{"source": "<rust code>"}`) and compiles server-side to Soroban WASM (base64) |
+| `/deploy` | POST | Accepts WASM, Stellar network, and signed transaction XDR (`{"signed_xdr": "..."}`), submits to Stellar network, and returns contract ID |
+
+#### Configuration & Environment Variables
+
+- `PORT`: Port to listen on (default: `8080`)
+- `CARGO`: Path to cargo binary for compilation (default: `cargo`)
+- `COMPILE_TIMEOUT_SECS`: Maximum compilation time in seconds (default: `30`)
+- `MAX_SOURCE_BYTES`: Maximum allowed source code size in bytes (default: `65536`)
+- `COMPILE_CPU_SECS`: CPU time limit for cargo subprocess on Linux in seconds (default: `20`)
+- `COMPILE_MEM_MB`: Virtual memory limit for cargo subprocess on Linux in MB (default: `1024`)
+- `COMPILE_WORK_DIR`: Base directory for compilation workspaces (default: `/tmp/lumens-compile`)
+- `STELLAR_RPC_TESTNET`: Custom Soroban RPC Testnet URL (default: `https://soroban-testnet.stellar.org`)
+- `STELLAR_RPC_MAINNET`: Custom Soroban RPC Mainnet URL (default: `https://soroban.stellar.org`)
+
+#### Running with Docker
+
+```bash
+cd backend
+docker build -t lumens-block-backend .
+docker run -p 8080:8080 lumens-block-backend
 ```
 
 ### Soroban Smart Contracts

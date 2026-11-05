@@ -20,6 +20,7 @@ export interface CompileResponse {
   wasm: string
   sourceHash: string
   sizeBytes: number
+  cached?: boolean
 }
 
 export class CompileContractError extends Error {
@@ -246,7 +247,7 @@ export async function deployContract(
   const compiled = await compileContract(graph)
   const wasmBytes = decodeWasmBase64(compiled.wasm)
 
-  const digest = await crypto.subtle.digest("SHA-256", wasmBytes)
+  const digest = await crypto.subtle.digest("SHA-256", wasmBytes as BufferSource)
   const wasmHashBuffer = Buffer.from(digest)
   const wasmHashHex = wasmHashBuffer.toString("hex")
 

@@ -6,7 +6,9 @@ title: Block Reference
 
 Every contract in LumensBlock is a graph of **blocks** connected by edges. Execution flows from the **Start** block through each connected block in breadth-first order.
 
-There are **6 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
+A graph can instead declare **named functions**: tag a subgraph with a `FunctionEntry` block and the compiler emits a separate `pub fn` for it, so one contract can expose `deposit()`, `withdraw()` and `get_balance()` from a single deployment. Graphs with no `FunctionEntry` keep compiling to the single `execute()` entry point exactly as before.
+
+There are **9 block types**. Each section below covers what the block does, its configuration fields, the Soroban code it generates, and an example use case.
 
 ---
 
@@ -108,7 +110,7 @@ Start → Auth → Storage → Condition → Transfer
 
 ## Condition
 
-Gates execution on a boolean parameter. If the condition is not met the contract panics with `symbol_short!("cond")`.
+Gates execution on a boolean parameter. If the condition is not met the contract panics with the generated `GeneratedError::ConditionFailed` contract error.
 
 **Config fields:**
 
@@ -124,7 +126,19 @@ Gates execution on a boolean parameter. If the condition is not met the contract
 ```rust
 // Release Condition Met?
 if !release {
-    panic_with_error!(&env, symbol_short!("cond"));
+    panic_with_error!(&env, GeneratedError::ConditionFailed);
+}
+```
+
+Graphs containing a Condition block also emit the error type the guard panics with:
+
+```rust
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum GeneratedError {
+    /// A Condition block guard evaluated to false.
+    ConditionFailed = 1,
 }
 ```
 
@@ -155,6 +169,111 @@ env.events().publish((event_name,), (from.clone(), to.clone(), amount));
 
 ---
 
+## Cross-Contract Call
+
+Invokes a function on another already-deployed Soroban contract and, optionally, binds the
+result to a name that downstream blocks can read.
+
+**Config fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `targetContractId` | yes | Address of the deployed contract to call. Compilation fails with `MISSING_TARGET_CONTRACT` when empty. |
+| `targetFunction` | yes | Name of the function to invoke. Compilation fails with `MISSING_TARGET_FUNCTION` when empty. |
+| `targetArgs` | no | Ordered argument list. Each argument has a `name`, a `rustType` (`Address`, `i128`, `Symbol` or `bool`) and a value `source`: `literal`, `storageKey` (read from instance storage) or `invocationArg` (an `execute` parameter). |
+| `returnBinding` | no | Name the return value is bound to. When set, the name is selectable as an **Argument** operand in downstream Condition blocks. |
+| `returnType` | no | Rust type of the bound return value. Defaults to `i128`. |
+
+Pasting or uploading the target contract's JSON ABI in the config panel turns the function
+field into a selector and pre-fills the argument slots with the declared types. Arguments
+whose configured type diverges from the ABI are flagged inline.
+
+| Generated parameter | Rust type | Description |
+|---|---|---|
+| `target_contract` | `Address` | Address the call is made against (`target_contract_2`, `target_contract_3`, … for further Cross-Contract Call blocks) |
+| *argument names* | *as configured* | Every argument sourced from an `invocationArg` that no other block already declares |
+
+**Generated Soroban code** (target `stake`, arguments `caller`/`amount`, bound to `stake_result`):
+```rust
+#[soroban_sdk::contractclient(name = "CrossContract1Client")]
+pub trait CrossContract1 {
+    // Target contract: CA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ
+    fn stake(env: Env, caller: Address, amount: i128) -> i128;
+}
+```
+```rust
+// Stake Pool → stake()
+let stake_result: i128 = CrossContract1Client::new(&env, &target_contract).stake(&caller, &amount);
+```
+
+**Example use case:** Stake a user's deposit into an external pool contract and abort the
+transaction unless the pool reports a non-zero staked amount.
+
+```
+Start → Auth → Cross-Contract Call → Condition → Event
+```
+## Function Entry
+
+Marks the root of a named function subgraph. A graph containing one or more `FunctionEntry` blocks compiles to one `pub fn` per entry, all inside the same `#[contractimpl] impl` block, instead of a single `execute()`.
+
+**Config fields:**
+
+| Field | Description |
+|---|---|
+| `functionName` | The emitted Rust function name. Must match `/^[a-z_][a-z0-9_]*$/`. |
+| `visibility` | `pub` (default) or `pub(crate)`. |
+| `functionParams` | Up to 10 `{ name, rustType }` pairs, emitted in order after `env`. |
+
+`env: Env` is always the first parameter and does not need declaring. Any parameter a body block relies on implicitly — `caller` for Auth, `from`/`to`/`amount`/`token` for Transfer, and so on — is appended automatically if you did not declare it.
+
+**Validation errors:**
+
+| Code | Cause |
+|---|---|
+| `MISSING_FUNCTION_NAME` | The entry has no name. |
+| `INVALID_FUNCTION_NAME` | The name is not a valid Rust identifier. |
+| `DUPLICATE_FUNCTION_NAME` | Two entries declare the same name. |
+| `TOO_MANY_FUNCTION_PARAMS` | More than 10 declared parameters. |
+| `INVALID_PARAM_NAME` / `RESERVED_PARAM_NAME` / `DUPLICATE_PARAM_NAME` | Bad parameter name, or one called `env`. |
+| `INVALID_PARAM_TYPE` | The Rust type contains characters no type can contain, or unbalanced brackets. |
+| `MISSING_FUNCTION_RETURN` | No `FunctionReturn` is reachable from the entry. |
+| `MULTIPLE_FUNCTION_RETURNS` | More than one `FunctionReturn` is reachable. |
+| `SHARED_FUNCTION_BLOCK` | A block is reachable from two different entries. |
+
+**Generated Soroban code:**
+```rust
+/// Generated from FunctionEntry "deposit".
+pub fn deposit(env: Env, amount: i128, caller: Address) -> i128 {
+    // Require caller
+    caller.require_auth();
+
+    amount
+}
+```
+
+**Example use case:** A vault contract exposing `deposit`, `withdraw` and `get_balance` as three separate callable functions on one deployed contract, rather than three separate deployments.
+
+---
+
+## Function Return
+
+Terminates a function subgraph and declares what the function returns. Every `FunctionEntry` needs exactly one reachable `FunctionReturn`; nothing downstream of a return belongs to that function.
+
+**Config fields:**
+
+| Field | Description |
+|---|---|
+| `returnType` | Rust return type, e.g. `i128`, `bool`, `()`. Defaults to `()`. |
+| `returnValue` | Expression to return. Optional — a zero value for the declared type is emitted when it is left empty. |
+
+**Validation errors:** `INVALID_RETURN_TYPE` for a malformed type, and `ORPHAN_FUNCTION_RETURN` when no `FunctionEntry` can reach the block.
+
+**Generated Soroban code:** the return type joins the signature and the value becomes the function's trailing expression.
+
+**Example use case:** Ending a `get_balance` subgraph with `returnType: i128` so callers receive the stored balance.
+
+---
+
 ## Block Limits
 
 | Limit | Value |
@@ -163,6 +282,7 @@ env.events().publish((event_name,), (from.clone(), to.clone(), amount));
 | Maximum edges per graph | 200 |
 | Maximum graph payload size | 256 KiB |
 | Maximum `storageKey` length | 9 characters |
+| Maximum parameters per `FunctionEntry` | 10 |
 
 ---
 
