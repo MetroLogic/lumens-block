@@ -4,11 +4,13 @@ import { useEffect, useRef } from "react"
 
 const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform)
 const mod = isMac ? "⌘" : "Ctrl"
+const undoKeys = isMac ? "⌘Z" : "Ctrl+Z"
+const redoKeys = isMac ? "⌘⇧Z / ⌘Y" : "Ctrl+Shift+Z / Ctrl+Y"
 
 const SHORTCUTS = [
   { keys: `${mod}+K`, description: "Open block palette" },
-  { keys: `${mod}+Z`, description: "Undo" },
-  { keys: `${mod}+Y`, description: "Redo" },
+  { keys: undoKeys, description: "Undo" },
+  { keys: redoKeys, description: "Redo" },
   { keys: "Delete / Backspace", description: "Remove selected block" },
   { keys: "Escape", description: "Close panel" },
   { keys: "Fit View", description: "Fit canvas to screen" },
@@ -60,7 +62,7 @@ export default function ShortcutsOverlay({ onClose }: Props) {
         {/* Shortcut list */}
         <ul className="divide-y px-5 dark:divide-slate-700">
           {SHORTCUTS.map(({ keys, description }) => (
-            <li key={keys} className="flex items-center justify-between py-3">
+            <li key={description} className="flex items-center justify-between py-3">
               <span className="text-sm text-gray-600 dark:text-slate-300">{description}</span>
               <kbd className="rounded border bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200">
                 {keys}

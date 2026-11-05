@@ -29,6 +29,7 @@ import {
 } from "@/lib/compile/schema"
 import { sanitizeRustIdent } from "@/lib/compile/crossContract"
 import { getNativeXlmAsset } from "@/lib/stellar/tokenMetadata"
+import { useEditorHistoryContext } from "./EditorHistoryContext"
 
 // ---------------------------------------------------------------------------
 // Type augmentation: allow BlockNode to receive any data shape
@@ -67,6 +68,7 @@ function assetBadgeLabel(asset: TransferAsset | undefined): string | null {
 
 export default function BlockNode({ id, type, data, selected }: BlockNodeProps) {
   const { setNodes } = useReactFlow()
+  const historyCtx = useEditorHistoryContext()
   const allNodes = useNodes()
 
   // Return values bound by CrossContractCall blocks are referenceable as
@@ -156,22 +158,26 @@ export default function BlockNode({ id, type, data, selected }: BlockNodeProps) 
   // -------------------------------------------------------------------------
   // Update helpers
   // -------------------------------------------------------------------------
-  const updateParams = (patch: Partial<NodeData["params"]>) => {
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (n.id !== id) return n
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            params: {
-              ...(n.data.params ?? {}),
-              ...patch,
+  const updateParams = (patch: Partial<BlockParameters>) => {
+    if (historyCtx) {
+      historyCtx.updateNodeParams(id, patch)
+    } else {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id !== id) return n
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              params: {
+                ...(n.data.params ?? {}),
+                ...patch,
+              },
             },
-          },
-        }
-      })
-    )
+          }
+        })
+      )
+    }
   }
 
   const functionParams = data.params?.functionParams ?? []

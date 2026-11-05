@@ -2,6 +2,8 @@
 
 import ReactFlow, {
   addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   Controls,
   MiniMap,
@@ -9,11 +11,16 @@ import ReactFlow, {
   useNodesState,
   type Connection,
   type Edge,
+  type EdgeChange,
   type EdgeMouseHandler,
+  type Node,
+  type NodeChange,
+  type NodeDragHandler,
   type ReactFlowInstance,
 } from "reactflow"
 import "reactflow/dist/style.css"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useGraphHistory, type GraphSnapshot } from "@/lib/editor/useGraphHistory"
 import { findCycle, formatCycleMessage } from "@/lib/compile/cycle"
 import { inferGraphTypes, type TypeMismatchError } from "@/lib/compile/typeInference"
 import { applyAutoLayout } from "@/lib/layout"
@@ -41,9 +48,10 @@ import { useTheme } from "./ThemeContext"
 import { connectWallet, fetchWalletBalance, type StellarNetwork } from "@/lib/stellar/deploy"
 import type { ContractGraph } from "@/lib/stellar/deploy"
 import type { ContractTestRunResult } from "@/lib/stellar/test"
-import { DEFAULT_LOOP_CONFIG } from "@/lib/compile/schema"
+import { DEFAULT_LOOP_CONFIG, type BlockParameters } from "@/lib/compile/schema"
+import { EditorHistoryContext } from "./EditorHistoryContext"
 
-const nodeTypes = {
+const NODE_TYPES = {
   Condition: BlockNode,
   Transfer: BlockNode,
   Storage: BlockNode,
@@ -79,6 +87,37 @@ export default function BlockEditor() {
   const [hoveredErrorEdge, setHoveredErrorEdge] = useState<{ id: string; x: number; y: number } | null>(null)
   const [cycleError, setCycleError] = useState<{ message: string; nodeIds: string[] } | null>(null)
 
+  // ── Undo / Redo history ──────────────────────────────────────────────
+  const history = useGraphHistory({ nodes: EMPTY_GRAPH_NODES, edges: [] })
+
+  /** Apply a graph snapshot and push it to the history stack. */
+  const applySnapshot = useCallback(
+    (next: GraphSnapshot) => {
+      setNodes(next.nodes)
+      setEdges(next.edges)
+      history.push(next)
+    },
+    [history, setNodes, setEdges]
+  )
+
+  const handleUndo = useCallback(() => {
+    if (!history.canUndo) return
+    const restored = (history.undo as () => GraphSnapshot | undefined)()
+    if (restored) {
+      setNodes(restored.nodes)
+      setEdges(restored.edges)
+    }
+  }, [history, setNodes, setEdges])
+
+  const handleRedo = useCallback(() => {
+    if (!history.canRedo) return
+    const restored = (history.redo as () => GraphSnapshot | undefined)()
+    if (restored) {
+      setNodes(restored.nodes)
+      setEdges(restored.edges)
+    }
+  }, [history, setNodes, setEdges])
+
   const showToast = useCallback((message: string, type: "error" | "success" = "error") => {
     setToast({ message, type })
   }, [])
@@ -86,17 +125,79 @@ export default function BlockEditor() {
   const applyGraph = useCallback(
     (graph: ContractGraph) => {
       const { nodes: nextNodes, edges: nextEdges } = toReactFlowGraph(graph)
-      setNodes(nextNodes)
-      setEdges(nextEdges)
+      applySnapshot({ nodes: nextNodes, edges: nextEdges })
       setTestResults(null)
       setOverrideTestFailure(false)
     },
-    [setNodes, setEdges]
+    [applySnapshot]
   )
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
-    [setEdges]
+    (connection: Connection) => {
+      const nextEdges = addEdge(connection, edges)
+      applySnapshot({ nodes, edges: nextEdges })
+    },
+    [nodes, edges, applySnapshot]
+  )
+
+  const onNodeDragStop: NodeDragHandler = useCallback(
+    (_event, _node) => {
+      const currentNodes = reactFlowInstance ? reactFlowInstance.getNodes() : nodes
+      applySnapshot({ nodes: currentNodes, edges })
+    },
+    [reactFlowInstance, nodes, edges, applySnapshot]
+  )
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      const hasRemoval = changes.some((c) => c.type === "remove")
+      if (hasRemoval) {
+        const nextNodes = applyNodeChanges(changes, nodes)
+        const removedIds = new Set(
+          changes.filter((c) => c.type === "remove").map((c) => (c as { id: string }).id)
+        )
+        const nextEdges = edges.filter(
+          (e) => !removedIds.has(e.source) && !removedIds.has(e.target)
+        )
+        applySnapshot({ nodes: nextNodes, edges: nextEdges })
+      } else {
+        onNodesChange(changes)
+      }
+    },
+    [nodes, edges, onNodesChange, applySnapshot]
+  )
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      const hasRemoval = changes.some((c) => c.type === "remove")
+      if (hasRemoval) {
+        const nextEdges = applyEdgeChanges(changes, edges)
+        applySnapshot({ nodes, edges: nextEdges })
+      } else {
+        onEdgesChange(changes)
+      }
+    },
+    [nodes, edges, onEdgesChange, applySnapshot]
+  )
+
+  const updateNodeParams = useCallback(
+    (nodeId: string, patch: Partial<BlockParameters>) => {
+      const nextNodes = nodes.map((n) => {
+        if (n.id !== nodeId) return n
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            params: {
+              ...(n.data?.params ?? {}),
+              ...patch,
+            },
+          },
+        }
+      })
+      applySnapshot({ nodes: nextNodes, edges })
+    },
+    [nodes, edges, applySnapshot]
   )
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -127,9 +228,9 @@ export default function BlockEditor() {
         },
       }
 
-      setNodes((nds) => nds.concat(newNode))
+      applySnapshot({ nodes: nodes.concat(newNode), edges })
     },
-    [reactFlowInstance, setNodes]
+    [nodes, edges, reactFlowInstance, applySnapshot]
   )
 
   const loadWalletInfo = useCallback(async () => {
@@ -173,13 +274,13 @@ export default function BlockEditor() {
     )
     if (!confirmed) return
 
-    setNodes(EMPTY_GRAPH_NODES)
-    setEdges([])
+    applySnapshot({ nodes: EMPTY_GRAPH_NODES, edges: [] })
+    history.clear({ nodes: EMPTY_GRAPH_NODES, edges: [] })
     setTestResults(null)
     setOverrideTestFailure(false)
     clearGraphStorage()
     saveGraphToStorage(toContractGraph(EMPTY_GRAPH_NODES, []))
-  }, [setNodes, setEdges])
+  }, [applySnapshot, history])
 
   const handleClearCanvas = useCallback(() => {
     const confirmed = window.confirm(
@@ -188,11 +289,11 @@ export default function BlockEditor() {
     if (!confirmed) return
 
     clearGraphStorage()
-    setNodes([])
-    setEdges([])
+    applySnapshot({ nodes: [], edges: [] })
+    history.clear({ nodes: [], edges: [] })
     setTestResults(null)
     setOverrideTestFailure(false)
-  }, [setNodes, setEdges])
+  }, [applySnapshot, history])
 
   const handleExport = useCallback(() => {
     downloadGraphJson(toContractGraph(nodes, edges))
@@ -236,9 +337,9 @@ export default function BlockEditor() {
         },
       }
 
-      setNodes((nds) => nds.concat(newNode))
+      applySnapshot({ nodes: nodes.concat(newNode), edges })
     },
-    [nodes.length, reactFlowInstance, setNodes]
+    [nodes, edges, reactFlowInstance, applySnapshot]
   )
 
   const handleTestResultsChange = useCallback((result: ContractTestRunResult | null) => {
@@ -249,8 +350,10 @@ export default function BlockEditor() {
   }, [])
 
   const handleAutoLayout = useCallback(() => {
-    setNodes((nds) =>
-      applyAutoLayout(nds, edges).map((node) => ({
+    const layoutedNodes = applyAutoLayout(nodes, edges)
+    applySnapshot({ nodes: layoutedNodes, edges })
+    setNodes(
+      layoutedNodes.map((node) => ({
         ...node,
         style: { ...node.style, transition: "all 0.3s ease" },
       }))
@@ -266,17 +369,46 @@ export default function BlockEditor() {
         })
       )
     }, 300)
-  }, [edges, setNodes])
+  }, [nodes, edges, applySnapshot, setNodes])
 
   const testsBlockingDeploy = testResults !== null && !testResults.allPassed && !overrideTestFailure
 
+  // Global keyboard shortcuts: Undo (Cmd/Ctrl+Z), Redo (Cmd/Ctrl+Shift+Z / Cmd/Ctrl+Y), ? (Help)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "?" && !shortcutsOpen) setShortcutsOpen(true)
+      const target = e.target as HTMLElement | null
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+
+      if (e.key === "?" && !shortcutsOpen && !isInput) {
+        setShortcutsOpen(true)
+        return
+      }
+
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey
+      if (!isCmdOrCtrl || isInput) return
+
+      const key = e.key.toLowerCase()
+
+      // Redo: Cmd/Ctrl+Shift+Z or Cmd/Ctrl+Y
+      if ((e.shiftKey && key === "z") || (!e.shiftKey && key === "y")) {
+        e.preventDefault()
+        handleRedo()
+        return
+      }
+
+      // Undo: Cmd/Ctrl+Z
+      if (!e.shiftKey && key === "z") {
+        e.preventDefault()
+        handleUndo()
+        return
+      }
     }
+
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [shortcutsOpen])
+  }, [shortcutsOpen, handleUndo, handleRedo])
 
   useEffect(() => {
     void loadWalletInfo()
@@ -289,9 +421,11 @@ export default function BlockEditor() {
       const { nodes: restoredNodes, edges: restoredEdges } = toReactFlowGraph(saved)
       setNodes(restoredNodes)
       setEdges(restoredEdges)
+      history.clear({ nodes: restoredNodes, edges: restoredEdges })
     }
     setHydrated(true)
-  }, [setNodes, setEdges])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
 
   // Debounced auto-save
   useEffect(() => {
@@ -387,170 +521,177 @@ export default function BlockEditor() {
   }, [toast])
 
   return (
-    <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
-      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
-        <select
-          value={selectedNetwork}
-          onChange={(event) => setSelectedNetwork(event.target.value as StellarNetwork)}
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-        >
-          <option value="testnet">Testnet</option>
-          <option value="mainnet">Mainnet</option>
-        </select>
-        <button
-          onClick={() => void loadWalletInfo()}
-          disabled={isWalletLoading}
-          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900"
-        >
-          {isWalletLoading ? "Checking..." : walletAddress ? "Refresh" : "Connect"}
-        </button>
-        {walletAddress && (
-          <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-            {walletBalance} XLM
-          </span>
-        )}
-      </div>
-
-      <Toolbar
-        onOpenShortcuts={() => setShortcutsOpen(true)}
-        onOpenTemplates={() => setIsTemplatesOpen(true)}
-        onAddBlock={onAddBlock}
-        onAutoLayout={handleAutoLayout}
-        onNew={handleNew}
-        onClearCanvas={handleClearCanvas}
-        onExport={handleExport}
-        onImport={(file) => void handleImport(file)}
-      />
-
-      <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
-
-      <InvokePanel deployedContractId={deployedContractId} network={selectedNetwork} />
-
-      <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
-        <ReactFlow
-          nodes={styledNodes}
-          edges={styledEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onInit={setReactFlowInstance}
-          onEdgeMouseEnter={onEdgeMouseEnter}
-          onEdgeMouseLeave={onEdgeMouseLeave}
-          nodeTypes={nodeTypes}
-          fitView
-        >
-          <Background color={theme === "dark" ? "#475569" : "#94a3b8"} />
-          <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-200" />
-          <MiniMap className="dark:bg-slate-800 dark:border-slate-700" maskColor={theme === "dark" ? "rgba(15, 23, 42, 0.7)" : "rgba(240, 242, 245, 0.7)"} />
-        </ReactFlow>
-
-        {hoveredErrorEdge && (
-          <div
-            data-testid="edge-type-error-tooltip"
-            role="tooltip"
-            className="pointer-events-none fixed z-30 max-w-xs rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-red-800 shadow-lg dark:border-red-800 dark:bg-red-950/90 dark:text-red-200"
-            style={{ left: hoveredErrorEdge.x + 12, top: hoveredErrorEdge.y + 12 }}
+    <EditorHistoryContext.Provider value={{ updateNodeParams }}>
+      <div className="relative h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors">
+        <div className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
+          <select
+            value={selectedNetwork}
+            onChange={(event) => setSelectedNetwork(event.target.value as StellarNetwork)}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
           >
-            {typeErrorsByEdge.get(hoveredErrorEdge.id)}
-          </div>
-        )}
-      </div>
-
-      <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
-        {testsBlockingDeploy && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow">
-            <p className="font-semibold">Tests failed — deployment blocked</p>
-            <label className="mt-2 flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={overrideTestFailure}
-                onChange={(e) => setOverrideTestFailure(e.target.checked)}
-              />
-              Override and deploy anyway
-            </label>
-          </div>
-        )}
-        {cycleError && (
-          <div
-            data-testid="cycle-error-banner"
-            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
-          >
-            <p className="font-semibold">{cycleError.message}</p>
-            <p className="mt-1">Soroban contracts cannot have cyclic control flow.</p>
-          </div>
-        )}
-        {typeErrors.length > 0 && (
-          <div
-            data-testid="type-error-banner"
-            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
-          >
-            <p className="font-semibold">
-              {typeErrors.length} type error{typeErrors.length === 1 ? "" : "s"} — fix before compiling
-            </p>
-          </div>
-        )}
-        <div className="flex items-center gap-3">
+            <option value="testnet">Testnet</option>
+            <option value="mainnet">Mainnet</option>
+          </select>
           <button
-            data-testid="code-preview-button"
-            onClick={() => setIsCodePreviewOpen(true)}
-            disabled={typeErrors.length > 0}
-            className="relative flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
-            title={typeErrors.length > 0 ? "Resolve type errors before compiling" : "Preview generated Soroban contract code"}
+            onClick={() => void loadWalletInfo()}
+            disabled={isWalletLoading}
+            className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900"
           >
-            <span className="font-mono font-bold text-blue-600 dark:text-blue-400">&lt;/&gt;</span> Code Preview
-            {typeErrors.length > 0 && (
-              <span
-                data-testid="type-error-badge"
-                className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white"
-              >
-                {typeErrors.length}
-              </span>
-            )}
+            {isWalletLoading ? "Checking..." : walletAddress ? "Refresh" : "Connect"}
           </button>
-          <SimulateButton nodes={nodes} edges={edges} disabled={typeErrors.length > 0} />
-          <DeployButton
-            nodes={nodes}
-            edges={edges}
-            selectedNetwork={selectedNetwork}
-            walletAddress={walletAddress}
-            walletBalance={walletBalance}
-            disabled={testsBlockingDeploy || typeErrors.length > 0}
-            onDeploySuccess={(id) => setDeployedContractId(id)}
-          />
+          {walletAddress && (
+            <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+              {walletBalance} XLM
+            </span>
+          )}
         </div>
+
+        <Toolbar
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          onOpenTemplates={() => setIsTemplatesOpen(true)}
+          onAddBlock={onAddBlock}
+          onAutoLayout={handleAutoLayout}
+          onNew={handleNew}
+          onClearCanvas={handleClearCanvas}
+          onExport={handleExport}
+          onImport={(file) => void handleImport(file)}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={history.canUndo}
+          canRedo={history.canRedo}
+        />
+
+        <TestsPanel nodes={nodes} edges={edges} onResultsChange={handleTestResultsChange} />
+
+        <InvokePanel deployedContractId={deployedContractId} network={selectedNetwork} />
+
+        <div className="h-full w-full" data-testid="editor-canvas" onDragOver={onDragOver} onDrop={onDrop}>
+          <ReactFlow
+            nodes={styledNodes}
+            edges={styledEdges}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onNodeDragStop={onNodeDragStop}
+            onConnect={onConnect}
+            onInit={setReactFlowInstance}
+            onEdgeMouseEnter={onEdgeMouseEnter}
+            onEdgeMouseLeave={onEdgeMouseLeave}
+            nodeTypes={NODE_TYPES}
+            fitView
+          >
+            <Background color={theme === "dark" ? "#475569" : "#94a3b8"} />
+            <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:fill-slate-200" />
+            <MiniMap className="dark:bg-slate-800 dark:border-slate-700" maskColor={theme === "dark" ? "rgba(15, 23, 42, 0.7)" : "rgba(240, 242, 245, 0.7)"} />
+          </ReactFlow>
+
+          {hoveredErrorEdge && (
+            <div
+              data-testid="edge-type-error-tooltip"
+              role="tooltip"
+              className="pointer-events-none fixed z-30 max-w-xs rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs text-red-800 shadow-lg dark:border-red-800 dark:bg-red-950/90 dark:text-red-200"
+              style={{ left: hoveredErrorEdge.x + 12, top: hoveredErrorEdge.y + 12 }}
+            >
+              {typeErrorsByEdge.get(hoveredErrorEdge.id)}
+            </div>
+          )}
+        </div>
+
+        <div className="absolute bottom-6 right-6 z-10 flex max-w-sm flex-col items-end gap-2">
+          {testsBlockingDeploy && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow">
+              <p className="font-semibold">Tests failed — deployment blocked</p>
+              <label className="mt-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={overrideTestFailure}
+                  onChange={(e) => setOverrideTestFailure(e.target.checked)}
+                />
+                Override and deploy anyway
+              </label>
+            </div>
+          )}
+          {cycleError && (
+            <div
+              data-testid="cycle-error-banner"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+            >
+              <p className="font-semibold">{cycleError.message}</p>
+              <p className="mt-1">Soroban contracts cannot have cyclic control flow.</p>
+            </div>
+          )}
+          {typeErrors.length > 0 && (
+            <div
+              data-testid="type-error-banner"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 shadow dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+            >
+              <p className="font-semibold">
+                {typeErrors.length} type error{typeErrors.length === 1 ? "" : "s"} — fix before compiling
+              </p>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              data-testid="code-preview-button"
+              onClick={() => setIsCodePreviewOpen(true)}
+              disabled={typeErrors.length > 0}
+              className="relative flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+              title={typeErrors.length > 0 ? "Resolve type errors before compiling" : "Preview generated Soroban contract code"}
+            >
+              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">&lt;/&gt;</span> Code Preview
+              {typeErrors.length > 0 && (
+                <span
+                  data-testid="type-error-badge"
+                  className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white"
+                >
+                  {typeErrors.length}
+                </span>
+              )}
+            </button>
+            <SimulateButton nodes={nodes} edges={edges} disabled={typeErrors.length > 0} />
+            <DeployButton
+              nodes={nodes}
+              edges={edges}
+              selectedNetwork={selectedNetwork}
+              walletAddress={walletAddress}
+              walletBalance={walletBalance}
+              disabled={testsBlockingDeploy || typeErrors.length > 0}
+              onDeploySuccess={(id) => setDeployedContractId(id)}
+            />
+          </div>
+        </div>
+
+        {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
+        <TemplatesModal
+          isOpen={isTemplatesOpen}
+          onClose={() => setIsTemplatesOpen(false)}
+          onSelectTemplate={handleLoadTemplate}
+        />
+        <CodePreviewModal
+          isOpen={isCodePreviewOpen}
+          onClose={() => setIsCodePreviewOpen(false)}
+          nodes={nodes}
+          edges={edges}
+        />
+
+        {toast && (
+          <div
+            role="status"
+            className={`absolute left-1/2 top-4 z-30 max-w-md -translate-x-1/2 rounded-lg border px-4 py-2 text-sm shadow-lg ${
+              toast.type === "error"
+                ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-200"
+            }`}
+          >
+            {toast.message}
+          </div>
+        )}
+
+        {walletError && (
+          <div className="absolute bottom-20 right-6 z-20 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow">
+            {walletError}
+          </div>
+        )}
       </div>
-
-      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
-      <TemplatesModal
-        isOpen={isTemplatesOpen}
-        onClose={() => setIsTemplatesOpen(false)}
-        onSelectTemplate={handleLoadTemplate}
-      />
-      <CodePreviewModal
-        isOpen={isCodePreviewOpen}
-        onClose={() => setIsCodePreviewOpen(false)}
-        nodes={nodes}
-        edges={edges}
-      />
-
-      {toast && (
-        <div
-          role="status"
-          className={`absolute left-1/2 top-4 z-30 max-w-md -translate-x-1/2 rounded-lg border px-4 py-2 text-sm shadow-lg ${
-            toast.type === "error"
-              ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/80 dark:text-red-200"
-              : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-200"
-          }`}
-        >
-          {toast.message}
-        </div>
-      )}
-
-      {walletError && (
-        <div className="absolute bottom-20 right-6 z-20 max-w-sm rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 shadow">
-          {walletError}
-        </div>
-      )}
-    </div>
+    </EditorHistoryContext.Provider>
   )
 }

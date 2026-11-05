@@ -1,6 +1,17 @@
 "use client"
 
-import { Download, FilePlus2, FolderOpen, Moon, Repeat, Sun, Trash2, Upload } from "lucide-react"
+import {
+  Download,
+  FilePlus2,
+  FolderOpen,
+  Moon,
+  Repeat,
+  Sun,
+  Trash2,
+  Upload,
+  Undo as ArrowCounterClockwise,
+  Redo as ArrowClockwise,
+} from "lucide-react"
 import { useRef } from "react"
 import { useTheme } from "./ThemeContext"
 
@@ -34,6 +45,10 @@ interface Props {
   onClearCanvas?: () => void
   onExport?: () => void
   onImport?: (file: File) => void
+  onUndo?: () => void
+  onRedo?: () => void
+  canUndo?: boolean
+  canRedo?: boolean
 }
 
 export default function Toolbar({
@@ -45,6 +60,10 @@ export default function Toolbar({
   onClearCanvas,
   onExport,
   onImport,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }: Props) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -83,6 +102,30 @@ export default function Toolbar({
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Blocks</p>
         <div className="flex items-center gap-1">
+          {onUndo && (
+            <button
+              onClick={onUndo}
+              disabled={!canUndo}
+              aria-label="Undo"
+              data-testid="toolbar-undo"
+              title="Undo (⌘Z)"
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-slate-200 disabled:hover:text-slate-500 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-200 dark:disabled:hover:border-slate-700 dark:disabled:hover:text-slate-400"
+            >
+              <ArrowCounterClockwise size={13} />
+            </button>
+          )}
+          {onRedo && (
+            <button
+              onClick={onRedo}
+              disabled={!canRedo}
+              aria-label="Redo"
+              data-testid="toolbar-redo"
+              title="Redo (⌘⇧Z)"
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-slate-200 disabled:hover:text-slate-500 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-200 dark:disabled:hover:border-slate-700 dark:disabled:hover:text-slate-400"
+            >
+              <ArrowClockwise size={13} />
+            </button>
+          )}
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"
