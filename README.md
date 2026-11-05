@@ -167,6 +167,8 @@ cargo build --target wasm32-unknown-unknown --release
 
 LumensBlock is open source and contributions are welcome!
 
+For the full developer setup guide, architecture overview, environment variables, testing instructions, code style, commit conventions, and PR process, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
 ### How to Contribute
 
 1. **Fork** the repository and create your branch from `main`
